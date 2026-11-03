@@ -1,4 +1,4 @@
-# Deploying the USA Election Live Predictor to Railway
+# Deploying the USA Election Predictor to Railway
 
 One always-on service that serves `map.html` and refreshes the CSVs from inside
 the same process. Verified against docs.railway.com in September 2026; every

@@ -61,6 +61,7 @@ def site(tmp_path_factory):
     static.mkdir()
     # Fetched when the House tab is first opened (see loadDistricts()).
     shutil.copy(REPO / "static" / "districts-albers-10m.json", static / "districts-albers-10m.json")
+    shutil.copy(REPO / "static" / "sources.html", static / "sources.html")
     for race in ("president", "senate", "governor", "house"):
         subprocess.run(
             [sys.executable, str(REPO / "generate_mock_data.py"), "--race", race, "--out-dir", str(root)],

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>USA Election Live Predictor</title>
+<title>USA Election Predictor</title>
 <script>
   // Runs before the stylesheet is applied, so the page never flashes the wrong
   // theme or palette on load. An explicit data-theme also means the CSS needs
@@ -426,6 +426,9 @@
     clip: rect(0 0 0 0); white-space: nowrap; border: 0;
   }
 
+  .sources-link { color: inherit; white-space: nowrap; text-underline-offset: 2px; }
+  .sources-short { display: none; }
+
   /* ---------- the "?" breakdown ---------- */
   #overlay-table tr.explainable { cursor: pointer; }
   #overlay-table tr.explainable:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
@@ -480,6 +483,9 @@
     .tabs { display: grid; grid-template-columns: repeat(4, 1fr); flex: 1 1 100%; }
     .tabs button { padding: 0.4rem 0.3rem; }
     #palette-toggle { flex: 1 1 auto; justify-content: center; }
+    /* The long label would wrap the map hint onto a second line. */
+    .sources-link .hint-long { display: none; }
+    .sources-short { display: inline; }
   }
 
   /* ---------- phone ---------- */
@@ -506,6 +512,7 @@
     }
     .map-hint { font-size: 0.78rem; margin-bottom: 0.35rem; }
     .hint-long { display: none; }
+
     #map { width: 100%; }
 
     #legend {
@@ -583,7 +590,7 @@
 <div class="page">
   <header>
     <div class="titles">
-      <h1>USA Election Live Predictor</h1>
+      <h1>USA Election Predictor</h1>
       <p class="subtitle" id="subtitle"></p>
     </div>
     <div class="header-controls">
@@ -605,7 +612,8 @@
 
   <div class="card map-card">
     <p class="map-hint" id="map-hint"><span id="map-hint-click">Click a state to drill down to its counties.</span>
-      <span class="hint-long"><span class="hint-plain">Muted colour means that region is still counting.</span><span class="hint-cvd" style="display:none">Solid means that region is done counting, hatched means it is still counting.</span></span></p>
+      <span class="hint-long"><span class="hint-plain">Muted colour means that region is still counting.</span><span class="hint-cvd" style="display:none">Solid means that region is done counting, hatched means it is still counting.</span></span>
+      <a class="sources-link" href="static/sources.html"><span class="hint-long">Method &amp; sources</span><span class="sources-short">Sources</span></a></p>
     <svg id="map" class="loading" viewBox="0 0 975 610" role="img" aria-label="Map of the United States coloured by projected winner"></svg>
     <div id="loading" role="status">Loading map data&hellip;</div>
     <div id="error" role="alert"></div>

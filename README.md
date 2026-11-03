@@ -1,4 +1,4 @@
-# USA Election Live Predictor 2028
+# USA Election Predictor 2028
 
 Scrapes live results from NBC News — president, Senate, governor, or House —
 and projects each area's current vote share out to 100% reporting, to get an
@@ -43,8 +43,9 @@ applies. See that script's docstring for the exact sourcing and known gaps.
 Nine states use new House maps in 2026 (Alabama, California, Florida,
 Louisiana, North Carolina, Ohio, Tennessee, Texas, Utah). The district map uses
 those lines (`scripts/build_district_topology.sh`, from the Census Bureau's
-120th-Congress files). Until 2026 results exist, the 137 districts whose lines
-changed show no results, since the 2024 ones cover different territory.
+120th-Congress files). The 137 districts whose lines changed have no 2024
+baseline, so they use the plain extrapolation. (If the House file ever held
+2024 results again, they would show nothing, since those cover other territory.)
 
 ## Requirements
 
@@ -134,6 +135,17 @@ DATA_DIR=./data REFRESH_SECONDS=900 NBC_CYCLE=2024 RACES=president python server
 
 `/healthz` reports per-race freshness and errors. See `DEPLOY.md` for the
 Railway-specific steps.
+
+## Data sources
+
+Every source, with links and licenses, is listed on the site's own
+[Method & data sources](static/sources.html) page (linked from the map). In
+short: live counts from NBC News; baselines from the MIT Election Data and
+Science Lab (Senate), tonmcg's county presidential results (President), NBC's
+final 2024 district results checked against the House Clerk's official
+statistics (House), and Wikipedia (Governor vote totals); boundaries from the
+U.S. Census Bureau (via us-atlas for counties and states). Update that page
+whenever a source changes.
 
 ## License
 

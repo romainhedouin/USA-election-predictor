@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Method &amp; data sources · USA Election Predictor</title>
+<script>
+  // Same stored choice as the map, so the theme doesn't flip between pages.
+  (function () {
+    var stored = null;
+    try { stored = localStorage.getItem("theme"); } catch (e) { /* private mode */ }
+    var dark = stored ? stored === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  })();
+</script>
+<style>
+  :root {
+    --ink: #1b2430; --muted: #5b6472; --border: #dfe3e8; --page-bg: #f4f5f7; --card-bg: #ffffff;
+    --link: #1d4ed8; --chip: #f1f2f4;
+  }
+  :root[data-theme="dark"] {
+    --ink: #e7ebf1; --muted: #98a2b3; --border: #262d38; --page-bg: #0f1319; --card-bg: #171c24;
+    --link: #8ab4ff; --chip: #232a34;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; background: var(--page-bg); color: var(--ink); line-height: 1.55; -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 1.5rem clamp(1rem, 4vw, 1.5rem) 3rem; }
+  a { color: var(--link); }
+  .back { font-size: 0.9rem; }
+  h1 { font-size: 1.5rem; margin: 0.75rem 0 0.25rem; }
+  h2 { font-size: 1.1rem; margin: 2rem 0 0.5rem; }
+  .lede { color: var(--muted); margin: 0 0 1rem; }
+  section { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 0.25rem 1.25rem 1rem; margin-top: 1rem; }
+  ul { padding-left: 1.2rem; }
+  li { margin: 0.45rem 0; }
+  .note { color: var(--muted); font-size: 0.88rem; }
+  code { background: var(--chip); border-radius: 4px; padding: 0 0.25rem; font-size: 0.88em; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.45rem 0.5rem 0.45rem 0; border-bottom: 1px solid var(--border); }
+  th { font-weight: 600; white-space: nowrap; padding-right: 1rem; }
+  td, li { overflow-wrap: anywhere; }
+  @media (max-width: 520px) {
+    th, td { display: block; }
+    th { border-bottom: none; padding-bottom: 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="../map.html">&larr; Back to the map</a>
+  <h1>Method &amp; data sources</h1>
+  <p class="lede">Where every number on the map comes from, and how the projections are made. Last reviewed
+    November 3, 2026. This project is independent and not affiliated with any of the sources below.</p>
+
+  <section>
+    <h2>How a projection is made</h2>
+    <p>Each county (or House district) is projected from what has been counted so far, compared with how the
+      same place voted last time. The difference is a <em>swing</em>, trusted more as more of the vote is in,
+      and applied to the vote still to count. Where there is no usable earlier result, the rest of the vote is
+      assumed to split like the vote counted so far. A state's projection is the sum of its counties'.</p>
+    <p>In any state or district drill-down, the <strong>?</strong> next to each row shows the exact working for
+      that projection with the real numbers, and "How this total is computed" does the same for the total. The
+      math itself is in
+      <a href="https://github.com/romainhedouin/USA-elections-predictor/blob/main/estimate.js"><code>estimate.js</code></a>;
+      the whole project is <a href="https://github.com/romainhedouin/USA-elections-predictor">open source</a>.</p>
+  </section>
+
+  <section>
+    <h2>Live results</h2>
+    <ul>
+      <li><strong><a href="https://www.nbcnews.com/politics/2024-elections/president-results">NBC News election results</a></strong>
+        &mdash; the only live source: every count on the map, by county (or by town, ward or district where a
+        state reports that way) and by House district. Fetched from the same results service NBC's own pages use.
+        Counts are unofficial until each state certifies them. Senate, governor and House show the 2026
+        count; President has no 2026 pages, so that tab keeps NBC's final 2024 results and says so in the
+        line under the title.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>What each race is compared against</h2>
+    <table>
+      <tr><th>President</th><td>Each county's 2024 presidential result, from
+        <a href="https://github.com/tonmcg/US_County_Level_Election_Results_08-24">tonmcg/US_County_Level_Election_Results_08-24</a>
+        (<code>2024_US_County_Level_Presidential_Results.csv</code>, MIT license), which compiles county returns.
+        The MIT Election Data and Science Lab's
+        <a href="https://doi.org/10.7910/DVN/VOQCHQ">County Presidential Election Returns 2000&ndash;2024</a>
+        (CC0) is the equivalent official dataset the builder also accepts.</td></tr>
+      <tr><th>Senate</th><td>The state's last regular election for the same seat (2020 for most, 2022 for Florida
+        and Ohio), from the MIT Election Data and Science Lab's
+        <a href="https://doi.org/10.7910/DVN/PEJ5QU">U.S. Senate statewide 1976&ndash;2024</a> (CC0). Each county
+        gets its own baseline: its 2024 presidential lean (above), shifted by how that Senate result differed from
+        the state's 2024 presidential result.</td></tr>
+      <tr><th>House</th><td>Each district's 2024 result, from NBC's final 2024 numbers, checked against the House
+        Clerk's official
+        <a href="https://clerk.house.gov/member_info/electionInfo/2024/statistics2024.pdf">Statistics of the
+        Presidential and Congressional Election of November 5, 2024</a>: 413 of 435 districts match vote for vote,
+        and every district used is within 1.9 points of the official Democratic share (269 of 273 within 0.2).
+        Districts redrawn for 2026, and 2024 races without both a Democrat and a Republican, have no baseline.</td></tr>
+      <tr><th>Governor</th><td>Statewide vote totals for each state's last governor's race, taken from each
+        race's Wikipedia article. Totals only, with no party split, so they size the race but the projection
+        itself uses the counted-so-far split.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Maps and boundaries</h2>
+    <ul>
+      <li><strong>Counties and states:</strong> <a href="https://github.com/topojson/us-atlas">us-atlas</a> 3.0.1
+        (ISC license), built from the U.S. Census Bureau's
+        <a href="https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html">cartographic
+        boundary files</a>, 2017 edition.</li>
+      <li><strong>House districts:</strong> the Census Bureau's 2024 cartographic 119th-Congress districts
+        (<a href="https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_cd119_20m.zip"><code>cb_2024_us_cd119_20m</code></a>),
+        the lines of the 2024 election; for the nine states that redrew for 2026 (Alabama, California, Florida,
+        Louisiana, North Carolina, Ohio, Tennessee, Texas, Utah), the Census Bureau's
+        <a href="https://www2.census.gov/geo/tiger/TGRGDB26/">2026 TIGER/Line</a> 120th-Congress districts.
+        Which districts changed is worked out by comparing those with the
+        <a href="https://www2.census.gov/geo/tiger/TIGER2025/CD/">2025 TIGER/Line</a> 119th-Congress lines.</li>
+      <li><strong>Matching NBC's county names to Census county codes:</strong> derived from NBC's own final 2024
+        results, joining each county by its unique vote counts.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Which races are on the ballot</h2>
+    <ul>
+      <li><strong>Electoral votes:</strong> the National Archives'
+        <a href="https://www.archives.gov/electoral-college/allocation">2020-census allocation</a> (538 total).</li>
+      <li><strong>2026 Senate and governor races:</strong>
+        <a href="https://en.wikipedia.org/wiki/2026_United_States_Senate_elections">2026 United States Senate elections</a>
+        and <a href="https://en.wikipedia.org/wiki/2026_United_States_gubernatorial_elections">2026 United States
+        gubernatorial elections</a> (Wikipedia).</li>
+      <li><strong>2026 House maps:</strong> the Census Bureau's
+        <a href="https://www.census.gov/programs-surveys/decennial-census/about/rdo/congressional-districts.html">congressional
+        districts page</a>, <a href="https://en.wikipedia.org/wiki/2025%E2%80%932026_United_States_redistricting">2025&ndash;2026
+        United States redistricting</a> (Wikipedia), and, for Missouri keeping its 2022 lines, the
+        <a href="https://missouriindependent.com/2026/09/03/missouri-supreme-court-blocks-gerrymandered-congressional-map-orders-referendum-vote/">Missouri
+        Supreme Court's September 3, 2026 ruling</a>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Software</h2>
+    <ul>
+      <li><a href="https://github.com/d3/d3">D3</a> and
+        <a href="https://github.com/topojson/topojson-client">topojson-client</a> (both ISC license), loaded from jsDelivr.</li>
+    </ul>
+    <p class="note">Spotted a wrong number or a broken source? The code and data files are all in the
+      <a href="https://github.com/romainhedouin/USA-elections-predictor">repository</a>.</p>
+  </section>
+</main>
+</body>
+</html>

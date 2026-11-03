@@ -5,6 +5,7 @@ running off the side, the map cropped, a dialog you cannot scroll or escape.
 """
 
 import pytest
+from selenium.webdriver.support.ui import WebDriverWait
 
 from conftest import OPEN_STATE, PHONES, VIEWPORTS, severe_logs
 
@@ -104,3 +105,12 @@ def test_page_works_without_injected_config(page):
     assert state["injected"], "the static fixture should have no injected config"
     assert state["landed"].startswith("President"), f"fell back wrongly: {state['landed']}"
     assert state["states"] == 51
+
+
+def test_sources_page_is_linked_and_links_back(page):
+    driver = page("laptop")
+    driver.execute_script("document.querySelector('a.sources-link').click()")
+    WebDriverWait(driver, 10).until(lambda d: d.execute_script("return location.pathname.endsWith('sources.html')"))
+    assert driver.execute_script("return document.querySelector('h1').textContent") == "Method & data sources"
+    driver.execute_script("document.querySelector('a.back').click()")
+    WebDriverWait(driver, 10).until(lambda d: d.execute_script("return !!document.querySelector('#map')"))
