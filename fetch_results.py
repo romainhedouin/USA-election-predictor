@@ -105,7 +105,7 @@ def fetch_race(race, cycle, skip):
         # nbc_api.house_results(). --skip has no meaning here (there is no
         # per-state fetch to skip) and is silently ignored.
         districts, last_modified = _or_exit_on_404(nbc_api.house_results, race, cycle, cycle)
-        return house_rows(districts), [], last_modified
+        return house_rows(districts), [], last_modified, len(districts)
 
     race_slug = RACES[race]["nbc_slug"]
     published = _or_exit_on_404(nbc_api.state_slugs, race, cycle, race_slug, cycle)
@@ -125,6 +125,7 @@ def fetch_race(race, cycle, skip):
 
     rows, failures, no_county = [], [], []
     last_modified = None
+    units = 0  # reporting areas NBC listed, counted or not
     for state_slug, payload, error in results:
         if error:
             failures.append((state_slug, error))
@@ -132,6 +133,7 @@ def fetch_race(race, cycle, skip):
         if payload is None:
             continue  # no race of this type in this state - routine
         rows.extend(state_rows(payload))
+        units += len(payload["areas"])
         lm = payload.get("last_modified")
         if lm and (last_modified is None or lm > last_modified):
             last_modified = lm  # ISO-8601 Z strings sort chronologically
@@ -142,7 +144,7 @@ def fetch_race(race, cycle, skip):
         # Not an error - these states genuinely have no county-level numbers,
         # and the map says so rather than inventing a county breakdown.
         print(f"Reported below county level, so no county map: {', '.join(sorted(no_county))}")
-    return rows, failures, last_modified
+    return rows, failures, last_modified, units
 
 
 def _state_slug(state_name):
@@ -165,6 +167,15 @@ def carried_forward_rows(previous_csv, failed_slugs, cycle):
     if kept:
         print(f"Kept previous rows for {', '.join(sorted({row[0] for row in kept}))}")
     return kept
+
+
+def has_live_rows(previous_csv, cycle):
+    """Whether the currently served CSV already holds real counts for this cycle."""
+    try:
+        meta = json.loads(previous_csv.with_suffix(".meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return meta.get("source") == "live" and str(meta.get("dataYear")) == str(cycle) and meta.get("rows", 0) > 0
 
 
 def write_meta(output_csv, race, cycle, rows, source, last_modified=None):
@@ -220,12 +231,20 @@ def main():
     output_csv = Path(args.out_dir) / race_files(args.race)["output_csv"].name
 
     print(f"{race['label']} {race['election_year']} results, from NBC's {cycle} pages")
-    rows, failures, last_modified = fetch_race(args.race, cycle, skip)
+    rows, failures, last_modified, units = fetch_race(args.race, cycle, skip)
     if failures and args.previous:
         rows += carried_forward_rows(args.previous, {slug for slug, _ in failures}, cycle)
 
     if not rows:
-        sys.exit(f"No results parsed - refusing to overwrite {output_csv}.")
+        # Every area at 0% is what NBC publishes before polls close: its pages
+        # exist, nothing is counted. Say so with an empty live file instead of
+        # leaving whatever was served before (demo figures, last cycle's
+        # numbers) up as if it were this election. Anything else with no rows
+        # is a failed or changed fetch, and a count only ever grows, so an
+        # empty result after real rows is a glitch and must not replace them.
+        if failures or not units or (args.previous and has_live_rows(args.previous, cycle)):
+            sys.exit(f"No results parsed - refusing to overwrite {output_csv}.")
+        print(f"All {units} reporting areas are at 0% - writing an empty live file")
 
     write_csv(rows, output_csv)
     write_meta(output_csv, args.race, cycle, rows, source="live", last_modified=last_modified)

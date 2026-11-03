@@ -26,13 +26,15 @@ fetch loop - see that function for why.
 """
 
 import json
+import re
+import unicodedata
 from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from races import HOUSE_DISTRICTS as _HOUSE_DISTRICTS
+from races import ELECTORAL_VOTES, HOUSE_DISTRICTS as _HOUSE_DISTRICTS, SENATE_SPECIAL_STATES_2026
 
 BASE_URL = "https://www.nbcnews.com/firecracker/api/v2"
 # NBC's edge is happy with a plain client; identify honestly rather than
@@ -60,6 +62,53 @@ COUNTY_GEOGRAPHIES = {"counties", "parishes"}
 # build_fips_table.py; see that script for why this is a table and not a
 # name match done at runtime.
 FIPS_TABLE = json.loads((Path(__file__).parent / "static" / "county_fips.json").read_text(encoding="utf-8"))
+
+# NBC's 2026 pages spell some areas differently from the 2024 pages the table
+# above was frozen from ("De Witt" / "DeWitt", "Doña Ana" / "Dona Ana"), and
+# use bare county names where 2024 said "<Name> County" or a borough. Spelling
+# differences are absorbed by _norm(); these are the ones that are a different
+# name altogether. Values are keys of FIPS_TABLE[state].
+_FIPS_ALIASES = {
+    "arkansas": {"Arkansas": "Arkansas County"},
+    "idaho": {"Idaho": "Idaho County"},
+    "oklahoma": {"Oklahoma": "Oklahoma County"},
+    "utah": {"Utah": "Utah County"},
+    "maryland": {"Baltimore": "Baltimore County"},
+    "missouri": {"St. Louis": "St. Louis County"},
+    "nevada": {"Carson": "Carson City"},
+    "new-york": {"Kings": "Brooklyn", "New York": "Manhattan", "Richmond": "Staten Island"},
+    "virginia": {"Fairfax": "Fairfax County", "Franklin": "Franklin County", "Richmond": "Richmond County",
+                 "Roanoke": "Roanoke County"},
+}
+
+# Slugs of the places that can have a statewide race page. The national index
+# also links other offices (lieutenant governor, or governor from the Senate
+# page) whose slugs are not a bare state.
+_STATE_SLUGS = {state.lower().replace(" ", "-") for state in ELECTORAL_VOTES}
+_SPECIAL_SENATE_SLUGS = {state.lower().replace(" ", "-") for state in SENATE_SPECIAL_STATES_2026}
+
+
+def _norm(name):
+    """Case, spacing, punctuation and accents ignored: "De Witt" == "DeWitt"."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]", "", ascii_name.lower())
+
+
+def _fips_by_name(state_slug, geography):
+    """NBC area name -> FIPS for one state, or {} where areas aren't counties.
+
+    Besides the table's own names it carries each name's _norm() form under a
+    "~" prefix and this cycle's aliases, which _build_areas falls back to.
+    """
+    if geography not in COUNTY_GEOGRAPHIES:
+        return {}
+    table = FIPS_TABLE.get(state_slug, {})
+    lookup = dict(table)
+    lookup.update({"~" + _norm(name): fips for name, fips in table.items()})
+    for alias, name in _FIPS_ALIASES.get(state_slug, {}).items():
+        lookup[alias] = table[name]
+    return lookup
+
 
 # The Census GEOID standard - what the district topology and house_districts
 # table both use - numbers an at-large state's lone district "00". NBC's own
@@ -101,8 +150,14 @@ def state_slugs(race_slug, cycle):
 
     def walk(node):
         if isinstance(node, dict):
-            if "stateName" in node and "href" in node:
-                found.append(node["href"].rsplit("/", 1)[-1].removesuffix(f"-{race_slug}-results"))
+            # Before polls open NBC lists some states (Delaware's Senate seat
+            # on 3 Nov 2026) with a null href: no page to fetch yet. It also
+            # links lieutenant-governor pages from the governor index and
+            # governor pages from the Senate one, which are not this race.
+            if "stateName" in node and node.get("href"):
+                slug = node["href"].rsplit("/", 1)[-1].removesuffix(f"-{race_slug}-results")
+                if slug in _STATE_SLUGS:
+                    found.append(slug)
             for value in node.values():
                 walk(value)
         elif isinstance(node, list):
@@ -119,7 +174,8 @@ def state_results(state_slug, race_slug, cycle):
     Returns None if NBC has no race of this type in this state (a 404), which
     is routine: most states have no Senate or governor race in a given cycle.
     """
-    url = f"{BASE_URL}/state-results/{cycle}-elections/{state_slug}-{race_slug}-results"
+    special = race_slug == "senate" and state_slug in _SPECIAL_SENATE_SLUGS
+    url = f"{BASE_URL}/state-results/{cycle}-{'special-' if special else ''}elections/{state_slug}-{race_slug}-results"
     payload = _get_or_none(url)
     races = payload and payload.get("races")
     if not races:
@@ -130,7 +186,7 @@ def state_results(state_slug, race_slug, cycle):
     race = max(races, key=lambda r: len(r.get("areas") or []))
 
     geography = payload.get("geography")
-    fips_by_name = FIPS_TABLE.get(state_slug, {}) if geography in COUNTY_GEOGRAPHIES else {}
+    fips_by_name = _fips_by_name(state_slug, geography)
 
     return {
         "state": payload.get("stateName") or state_slug,
@@ -172,7 +228,7 @@ def district_results(geoid, cycle):
     # matters for joining areas to county shapes is the breakdown granularity
     # underneath, which NBC calls underlyingGeographies on this endpoint.
     geography = payload.get("underlyingGeographies")
-    fips_by_name = FIPS_TABLE.get(state_slug, {}) if geography in COUNTY_GEOGRAPHIES else {}
+    fips_by_name = _fips_by_name(state_slug, geography)
 
     return {
         "geoid": geoid,
@@ -202,7 +258,7 @@ def _build_areas(areas_raw, fips_by_name):
     return [
         {
             "name": area["name"],
-            "fips": fips_by_name.get(area["name"], ""),
+            "fips": fips_by_name.get(area["name"]) or fips_by_name.get("~" + _norm(area["name"]), ""),
             "percent_in": float(area.get("percentIn") or 0),
             "votes": int(area.get("votes") or 0),
             "by_party": _votes_by_party(area.get("candidates") or []),

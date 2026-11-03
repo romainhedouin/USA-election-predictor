@@ -250,12 +250,13 @@ def _run(argv, timeout, label):
         return -9, (out or "").strip()
 
 
-def _looks_like_csv(path):
+def _looks_like_csv(path, allow_empty=False):
     """Cheap sanity check: a header line and at least one data row.
 
     A fetcher that dies halfway through can leave a truncated file. We only
     promote a staged file that passes this, so a bad run can never replace
-    good data with garbage.
+    good data with garbage. allow_empty accepts a header with no rows: what
+    fetch_results.py deliberately writes while nothing is counted yet.
     """
     try:
         if path.stat().st_size < 32:
@@ -265,11 +266,18 @@ def _looks_like_csv(path):
             if "State" not in header or ";" not in header:
                 return False, "missing/odd header row"
             rows = sum(1 for _ in handle)
-        if rows < 1:
+        if rows < 1 and not allow_empty:
             return False, "header only, no data rows"
         return True, rows
     except OSError as exc:
         return False, f"unreadable: {exc}"
+
+
+def _is_live_meta(path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("source") == "live"
+    except (OSError, ValueError):
+        return False
 
 
 def refresh_race(race, *, use_mock=False):
@@ -316,7 +324,7 @@ def refresh_race(race, *, use_mock=False):
                       race, duration, target.exists())
             return False
 
-        ok, detail = _looks_like_csv(staged)
+        ok, detail = _looks_like_csv(staged, allow_empty=not use_mock and _is_live_meta(staging / meta_name(race)))
         if not ok:
             _record(race, ok=False, duration=duration, error=f"staged CSV rejected: {detail}")
             log.error("refresh race=%s status=failed reason=%s duration=%.1fs kept=%s",

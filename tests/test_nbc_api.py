@@ -132,3 +132,71 @@ def test_state_and_district_results_share_the_same_summary_field_shape(monkeypat
     shared_keys = ("total_expected", "percent_in", "last_modified", "candidates")
     for key in shared_keys:
         assert state_result[key] == district_result[key]
+
+
+def test_state_slugs_drops_lieutenant_governor_pages_and_unopened_races(monkeypatch):
+    """NBC's 2026 indexes link other offices and unopened races.
+
+    The governor index carries lieutenant-governor pages ("alabama-lieutenant")
+    that would otherwise be fetched and merged into the governor CSV, and
+    Delaware's Senate row has no href before polls open (which used to crash
+    the whole fetch).
+    """
+    index = {"tableData": {"states": [
+        {"stateName": "Alabama", "href": "/politics/2026-elections/alabama-governor-results"},
+        {"stateName": "Alabama", "href": "/politics/2026-elections/alabama-lieutenant-governor-results"},
+        {"stateName": "Delaware", "href": None},
+        {"stateName": "New Hampshire", "href": "/politics/2026-elections/new-hampshire-governor-results"},
+    ]}}
+    monkeypatch.setattr(nbc_api, "_get", lambda url: index)
+    assert nbc_api.state_slugs("governor", "2026") == ["alabama", "new-hampshire"]
+
+
+def test_state_slugs_from_a_senate_index(monkeypatch):
+    index = {"tableData": {"states": [
+        {"stateName": "Georgia", "href": "/politics/2026-elections/georgia-senate-results"},
+        {"stateName": "Delaware", "href": None},
+        {"stateName": "Arizona", "href": "/politics/2026-elections/arizona-governor-results"},
+        {"stateName": "Ohio", "href": "/politics/2026-special-elections/ohio-senate-results"},
+    ]}}
+    monkeypatch.setattr(nbc_api, "_get", lambda url: index)
+    assert nbc_api.state_slugs("senate", "2026") == ["georgia", "ohio"]
+    assert nbc_api.state_slugs("governor", "2026") == ["arizona"]
+
+
+def test_special_senate_races_use_the_special_elections_path(monkeypatch):
+    urls = []
+    monkeypatch.setattr(nbc_api, "_get_or_none", lambda url: urls.append(url))
+    nbc_api.state_results("florida", "senate", "2026")
+    nbc_api.state_results("georgia", "senate", "2026")
+    nbc_api.state_results("florida", "governor", "2026")
+    assert [u.split("/state-results/")[1] for u in urls] == [
+        "2026-special-elections/florida-senate-results",
+        "2026-elections/georgia-senate-results",
+        "2026-elections/florida-governor-results",
+    ]
+
+
+def test_county_names_match_the_fips_table_across_nbc_spellings():
+    """NBC's 2026 spellings differ from the 2024 names the table was frozen from."""
+    def fips(state, name):
+        return nbc_api._build_areas(
+            [{"name": name}], nbc_api._fips_by_name(state, "counties"))[0]["fips"]
+
+    assert fips("illinois", "De Witt") == "17039"          # spacing
+    assert fips("new-mexico", "Doña Ana") == "35013"       # accent and case
+    assert fips("virginia", "Fairfax city") == "51600"     # case
+    assert fips("virginia", "Fairfax") == "51059"          # bare name is the county
+    assert fips("new-york", "Kings") == "36047"            # borough
+    assert fips("new-york", "Richmond") == "36085"
+    assert fips("virginia", "Richmond") == "51159"         # same word, other state
+    assert fips("missouri", "St. Louis") == "29189"
+    assert fips("georgia", "Appling") == "13001"           # exact names unaffected
+    assert fips("georgia", "Nowhere") == ""
+    assert nbc_api._fips_by_name("maine", "townships") == {}
+
+
+def test_every_fips_alias_points_at_a_real_table_entry():
+    for state, aliases in nbc_api._FIPS_ALIASES.items():
+        for target in aliases.values():
+            assert target in nbc_api.FIPS_TABLE[state], (state, target)

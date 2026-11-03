@@ -20,9 +20,10 @@ Two different years matter, and conflating them was a real bug:
   - `election_year` is the election we are REPORTING ON. It is what the UI
     shows and never changes until that election is over.
   - `nbc_cycle` is the year in NBC's URL path (/politics/<nbc_cycle>-elections/...).
-    NBC mints a path per election *once results exist*, so today the only
-    cycle that resolves for all three races is "2024" - 2026 and 2028 both
-    404 (verified 2026-09-17). Flip `nbc_cycle` on election night.
+    NBC mints a path per election *once results exist*. 2026 resolved for
+    Senate, Governor and House by election day (verified 2026-11-03); President
+    has no 2026 or 2028 pages, so it still reads 2024. Until a race's votes
+    are counted every area is at 0% and the CSV is written empty.
 
 Each race's `weights` dict is both "how much is a win in this state worth"
 (electoral votes for president, one seat for Senate/governor) and "which
@@ -65,6 +66,11 @@ SENATE_STATES_2026 = [
     "Florida", "Ohio",
 ]
 
+# The two of those that are special elections. NBC publishes their pages under
+# a "2026-special-elections" path rather than "2026-elections" (verified
+# 2026-11-03): see nbc_api.state_results.
+SENATE_SPECIAL_STATES_2026 = ["Florida", "Ohio"]
+
 # States with a 2026 gubernatorial race. Verified against Wikipedia's "2026
 # United States gubernatorial elections" (36 states; DC/territories excluded
 # since they're outside our county-map data and DC has no governorship).
@@ -104,7 +110,7 @@ GOVERNOR_LAST_ELECTED = {
 # against a different election than the one that actually produced today's
 # incumbent. Verified against Wikipedia's "2026 United States Senate
 # elections" and each senator's own election history.
-_SENATE_LAST_CONTESTED_OVERRIDE = {"Florida": 2022, "Ohio": 2022}
+_SENATE_LAST_CONTESTED_OVERRIDE = {state: 2022 for state in SENATE_SPECIAL_STATES_2026}
 SENATE_LAST_CONTESTED = {
     state: _SENATE_LAST_CONTESTED_OVERRIDE.get(state, 2020) for state in SENATE_STATES_2026
 }
@@ -125,6 +131,7 @@ for _states, _expected in ((SENATE_STATES_2026, 35), (GOVERNOR_STATES_2026, 36))
     assert len(_states) == _expected, f"expected {_expected} states, got {len(_states)}"
     assert len(set(_states)) == len(_states), "duplicate state"
     assert set(_states) <= set(ELECTORAL_VOTES), f"unknown state name: {set(_states) - set(ELECTORAL_VOTES)}"
+assert set(SENATE_SPECIAL_STATES_2026) <= set(SENATE_STATES_2026)
 assert len(HOUSE_DISTRICTS) == 435, f"expected 435 House districts, got {len(HOUSE_DISTRICTS)}"
 assert set(GOVERNOR_LAST_ELECTED) == set(GOVERNOR_STATES_2026)
 assert all(1900 < year < 2026 for year in GOVERNOR_LAST_ELECTED.values())
@@ -144,21 +151,21 @@ RACES = {
         "label": "Senate",
         "nbc_slug": "senate",
         "election_year": 2026,  # Tue 3 Nov 2026
-        "nbc_cycle": "2024",    # /politics/2026-elections/senate-results is a 404 today
+        "nbc_cycle": "2026",
         "weights": {state: 1 for state in SENATE_STATES_2026},
     },
     "governor": {
         "label": "Governor",
         "nbc_slug": "governor",
         "election_year": 2026,  # Tue 3 Nov 2026
-        "nbc_cycle": "2024",    # /politics/2026-elections/governor-results is a 404 today
+        "nbc_cycle": "2026",
         "weights": {state: 1 for state in GOVERNOR_STATES_2026},
     },
     "house": {
         "label": "House",
         "nbc_slug": "house",
         "election_year": 2026,  # Tue 3 Nov 2026
-        "nbc_cycle": "2024",    # /politics/2026-elections/house-results is a 404 today
+        "nbc_cycle": "2026",
         # Every one of the 435 seats is up every cycle, keyed by district
         # GEOID rather than state name - a different key space than the other
         # three races' weights, which map.html has to know about.

@@ -165,12 +165,12 @@ to paste all of them at once).
 | Variable | Value | Why |
 | --- | --- | --- |
 | `DATA_DIR` | `/data` | Must equal the volume mount path. |
-| `REFRESH_SECONDS` | `900` | 15 min normally. Drop to `60` on election night. Floor is 30s. |
-| `NBC_CYCLE` | `2024` | `races.py` says 2026/2028 NBC paths 404 until results exist. Bump on election night. |
-| `RACES` | `president,senate,governor` | Or omit — the default is all four (add `house` here too if you want it refreshed). |
+| `REFRESH_SECONDS` | `600` | 10 min. NBC itself updates every 15s; the floor here is 30s. |
+| `NBC_CYCLE` | unset, or `2026` | Senate, Governor and House already default to NBC's `2026` pages (`races.py`). Do not set it while `RACES` includes `president`: NBC has no 2026 or 2028 president pages, so it would 404. |
+| `RACES` | `senate,governor,house` | The three 2026 races. Leave `president` out: it has no 2026 pages and keeps serving its last 2024 file. |
 | `FETCH_TIMEOUT` | `300` | Hard kill per race. ~10s expected, so 300 is very generous. |
 | `DEFAULT_RACE` | e.g. `senate` | Which tab a visitor lands on. |
-| `REFRESH_ENABLED` | `1` | `0` pauses the scheduler entirely (no NBC traffic) while still serving what's on the volume — use it out of season. |
+| `REFRESH_ENABLED` | `1` | `0` pauses the scheduler entirely (no NBC traffic) while still serving what's on the volume — use it out of season. **If the page shows weeks-old data, check this first**: `/healthz` says `"refresh_enabled": false`. |
 
 The full list, with defaults, is in the README's Deploying section.
 
@@ -183,9 +183,10 @@ form is deprecated — <https://docs.railway.com/cli/variable>):
 
 ```bash
 railway variable set DATA_DIR=/data --skip-deploys
-railway variable set REFRESH_SECONDS=900 --skip-deploys
-railway variable set NBC_CYCLE=2024 --skip-deploys
-railway variable set RACES=president,senate,governor --skip-deploys
+railway variable set REFRESH_SECONDS=600 --skip-deploys
+railway variable delete NBC_CYCLE --skip-deploys   # the race config already says 2026
+railway variable set RACES=senate,governor,house --skip-deploys
+railway variable set REFRESH_ENABLED=1 --skip-deploys
 railway variable set FETCH_TIMEOUT=300          # last one, triggers one redeploy
 railway variable list
 ```
