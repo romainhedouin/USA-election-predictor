@@ -82,6 +82,16 @@ _STATE_FIPS_PREFIX = {info["state"]: geoid[:2] for geoid, info in HOUSE_DISTRICT
 _AT_LARGE_STATE_FIPS = {geoid[:2] for geoid in HOUSE_DISTRICTS if geoid.endswith("00")}
 
 
+# MEDSL leaves party blank for a few major-party nominees (the 2020 Wyoming
+# Senate race has no party on either candidate). Without these the state looks
+# uncontested and gets no baseline. Keyed (state, year, candidate), uppercased
+# as MEDSL writes them; every other blank-party row is a minor or write-in.
+_PARTY_OVERRIDES = {
+    ("WYOMING", "2020", "CYNTHIA M. LUMMIS"): "rep",
+    ("WYOMING", "2020", "MERAV BEN DAVID"): "dem",
+}
+
+
 def _party_of(row):
     # MEDSL has used different column names across releases: "party" in the
     # older long-format files (e.g. countypres_2000-2016.csv), "party_simplified"
@@ -253,7 +263,7 @@ def statewide_baseline(rows, office_contains, year_by_state):
         office = (row.get("office") or "").upper()
         if office_contains not in office:
             continue
-        party = _party_of(row)
+        party = _PARTY_OVERRIDES.get((canonical.upper(), str(year), (row.get("candidate") or "").strip().upper())) or _party_of(row)
         if party is None:
             continue
         bucket = votes.setdefault(canonical, {"dem": 0, "rep": 0})

@@ -99,6 +99,21 @@ def test_statewide_baseline_matches_state_names_case_insensitively():
     assert baseline == {"Alabama": {"demShare": 0.35, "repShare": 0.65, "votes": 100, "year": 2020}}
 
 
+def test_statewide_baseline_names_the_blank_party_wyoming_nominees():
+    # MEDSL's 2020 Wyoming Senate rows have no party at all, so without the
+    # override the state looks uncontested and gets no baseline.
+    rows = [
+        {"year": "2020", "state": "WYOMING", "office": "US SENATE", "candidate": "CYNTHIA M. LUMMIS",
+         "party_simplified": "OTHER", "candidatevotes": "75"},
+        {"year": "2020", "state": "WYOMING", "office": "US SENATE", "candidate": "MERAV BEN DAVID",
+         "party_simplified": "OTHER", "candidatevotes": "25"},
+        {"year": "2020", "state": "WYOMING", "office": "US SENATE", "candidate": "UNDER VOTES",
+         "party_simplified": "OTHER", "candidatevotes": "9"},
+    ]
+    baseline = bhb.statewide_baseline(rows, "SENATE", races.SENATE_LAST_CONTESTED)
+    assert baseline["Wyoming"] == {"demShare": 0.25, "repShare": 0.75, "votes": 100, "year": 2020}
+
+
 def test_party_of_falls_back_to_party_simplified_and_party_detailed():
     # Newer MEDSL releases (e.g. the 1976-2024 senate file) use
     # "party_simplified"/"party_detailed" instead of "party".
