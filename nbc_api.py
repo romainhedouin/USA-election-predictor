@@ -39,7 +39,7 @@ from races import ELECTORAL_VOTES, HOUSE_DISTRICTS as _HOUSE_DISTRICTS, SENATE_S
 BASE_URL = "https://www.nbcnews.com/firecracker/api/v2"
 # NBC's edge is happy with a plain client; identify honestly rather than
 # impersonating a browser.
-USER_AGENT = "usa-elections-predictor/1.0 (+https://github.com/romainhedouin/USA-elections-predictor)"
+USER_AGENT = "usa-election-predictor/1.0 (+https://github.com/romainhedouin/USA-election-predictor)"
 TIMEOUT = (5, 30)  # (connect, read) seconds
 
 # Shared so repeated NBC requests reuse one keep-alive connection pool.

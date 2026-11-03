@@ -21,7 +21,7 @@ marked **[UNCONFIRMED]**.
 ## 1. Prepare the repo (before touching Railway)
 
 Everything the deployment needs is already at the root of
-`romainhedouin/USA-elections-predictor`:
+`romainhedouin/USA-election-predictor`:
 
 ```
 server.py, railway.toml, requirements.txt, .python-version
@@ -84,9 +84,9 @@ If you ever want to override the start command without touching
 1. <https://railway.com/new>, or **New Project** from the dashboard.
 2. Choose **Deploy from GitHub repo**.
 3. If this is your first project, authorise the Railway GitHub App and grant it
-   access to `USA-elections-predictor` (**Configure GitHub App** if the repo
+   access to `USA-election-predictor` (**Configure GitHub App** if the repo
    does not appear).
-4. Pick `romainhedouin/USA-elections-predictor`.
+4. Pick `romainhedouin/USA-election-predictor`.
 5. Railway creates the service and starts a first build immediately. **Let this
    first deploy fail or misbehave** — the volume and variables are not set up
    yet. Do not debug it until step 5.
