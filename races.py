@@ -22,7 +22,7 @@ Two different years matter, and conflating them was a real bug:
   - `nbc_cycle` is the year in NBC's URL path (/politics/<nbc_cycle>-elections/...).
     NBC mints a path per election *once results exist*. 2026 resolved for
     Senate, Governor and House by election day (verified 2026-11-03); President
-    has no 2026 or 2028 pages, so it still reads 2024. Until a race's votes
+    has no 2026 pages, so it reads (and is labelled) 2024. Until a race's votes
     are counted every area is at 0% and the CSV is written empty.
 
 Each race's `weights` dict is both "how much is a win in this state worth"
@@ -143,8 +143,8 @@ RACES = {
     "president": {
         "label": "President",
         "nbc_slug": "president",
-        "election_year": 2028,  # Tue 7 Nov 2028
-        "nbc_cycle": "2024",    # NBC has no 2028 pages yet (404); bump on election night
+        "election_year": 2024,  # Tue 5 Nov 2024; the tab shows NBC's final 2024 results
+        "nbc_cycle": "2024",
         "weights": ELECTORAL_VOTES,
     },
     "senate": {
@@ -176,7 +176,7 @@ RACES = {
 # President and House are both synced everywhere (every House seat is up
 # every 2 years, all 50 states at once), so these are flat offsets rather
 # than per-state tables - unlike Senate/Governor, which are not.
-PRESIDENT_LAST_ELECTED = RACES["president"]["election_year"] - 4
+PRESIDENT_LAST_ELECTED = 2024  # the baseline is the last presidential result, whatever the tab shows
 HOUSE_LAST_ELECTED = RACES["house"]["election_year"] - 2
 
 

@@ -1,4 +1,4 @@
-# USA Election Predictor 2028
+# USA Election Predictor
 
 Scrapes live results from NBC News — president, Senate, governor, or House —
 and projects each area's current vote share out to 100% reporting, to get an
