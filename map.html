@@ -757,6 +757,24 @@ const DEFAULT_RACE = (() => {
   return wanted && Object.prototype.hasOwnProperty.call(RACE_META, wanted) ? wanted : "president";
 })();
 
+// The tab and drill-down are kept in the URL hash ("#senate", "#house/2103",
+// "#governor/39": the race, then a state's FIPS or a district's GEOID), so a
+// refresh stays put and a link can be shared. A hash rather than a path or a
+// query string because the server never sees it: every relative fetch
+// (static/..., raw_data_*.csv) keeps working and nothing is cached per URL.
+// Written with replaceState, so it adds no history entries; anything that
+// does not parse falls back to the default view instead of erroring.
+function readHash() {
+  let parts = [];
+  try { parts = decodeURIComponent(location.hash.slice(1)).split("/"); } catch (err) { /* malformed %-escape */ }
+  const race = Object.prototype.hasOwnProperty.call(RACE_META, parts[0]) ? parts[0] : null;
+  return { race, unit: race && parts[1] ? parts[1] : null };
+}
+function writeHash(race, unit) {
+  try { history.replaceState(null, "", "#" + race + (unit ? "/" + unit : "")); } catch (err) { /* sandboxed frame */ }
+}
+const START = readHash();
+
 // Read live so the OS light/dark theme, and any future palette edit, reaches
 // the SVG fills as well as the CSS-styled chrome.
 //
@@ -1362,7 +1380,7 @@ if (typeof d3 === "undefined" || typeof topojson === "undefined") {
 } else {
   Promise.all([
     fetch(TOPOLOGY_URL).then(r => { if (!r.ok) throw new Error(`${r.status} fetching county boundaries`); return r.json(); }),
-    loadRace(DEFAULT_RACE),
+    loadRace(START.race || DEFAULT_RACE),
   ])
     .then(([topology, defaultRaceData]) => start(topology, defaultRaceData))
     .catch(err => {
@@ -1723,11 +1741,13 @@ function start(topology, defaultRaceData) {
   }
 
   // ---------- national view (states for president/senate/governor, districts for House) ----------
+  // Whether a unit can be drilled into. Shared by clicks and by the URL hash,
+  // so a pasted link cannot open something a click could not.
+  const canOpen = d => hasRace(weightKeyOf(d)) && !current.redrawnHidden?.has(weightKeyOf(d));
+  const openUnit = d => (isDistrictRace(current.race) ? openDistrictOverlay(d) : openStateOverlay(d));
+
   function renderNational() {
-    const districtRace = isDistrictRace(current.race);
     const features = nationalFeatures();
-    const clickable = d => hasRace(weightKeyOf(d)) && !current.redrawnHidden?.has(weightKeyOf(d));
-    const openOverlay = d => (districtRace ? openDistrictOverlay(d) : openStateOverlay(d));
 
     // selectAll("*").remove() destroys the focused path, so remember which
     // unit it was and hand focus back after the redraw.
@@ -1746,18 +1766,18 @@ function start(topology, defaultRaceData) {
       .attr("class", d => "state" + (hasRace(weightKeyOf(d)) ? "" : " no-race"))
       .attr("fill", d => stateFill(stateStatus(statusKeyOf(d)), weightKeyOf(d), "nat"))
       .attr("d", nationalPath)
-      .attr("tabindex", d => (clickable(d) ? 0 : null))
-      .attr("role", d => (clickable(d) ? "button" : null))
+      .attr("tabindex", d => (canOpen(d) ? 0 : null))
+      .attr("role", d => (canOpen(d) ? "button" : null))
       .attr("aria-label", d => `${labelOf(d)}: ${stateSummary(weightKeyOf(d), stateStatus(statusKeyOf(d)))}`)
       .on("mousemove", (event, d) => {
         showTooltip(event, `<strong>${escapeHtml(labelOf(d))}</strong><br>${stateSummary(weightKeyOf(d), stateStatus(statusKeyOf(d)))}`);
       })
       .on("mouseleave", hideTooltip)
-      .on("click", (event, d) => { if (clickable(d)) openOverlay(d); })
+      .on("click", (event, d) => { if (canOpen(d)) openUnit(d); })
       .on("keydown", (event, d) => {
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
-        if (clickable(d)) openOverlay(d);
+        if (canOpen(d)) openUnit(d);
       });
 
     // State borders give House viewers something to orient by even though
@@ -1881,12 +1901,13 @@ function start(topology, defaultRaceData) {
     // Bump first: clicking back to the current race must cancel whatever is
     // already in flight, not just decline to start a second request.
     const token = ++pendingRace;
-    if (race === current.race) return;
-    loadRace(race)
+    if (race === current.race) return Promise.resolve();
+    return loadRace(race)
       .then(loaded => {
         if (token !== pendingRace) return; // a newer tab click already won
         current = loaded;
         closeOverlay({ restoreFocus: false }); // renderNational() is about to delete that node
+        writeHash(race);
         renderRaceTabs();
         renderNational();
         renderScoreboard();
@@ -2055,6 +2076,7 @@ function start(topology, defaultRaceData) {
 
     lastFocused = document.activeElement;
     openStateFeature = stateFeature;
+    writeHash(current.race, stateFeature.id);
     hideTooltip(); // a tap synthesises a hover, which would strand a tooltip over the sheet
     setBackgroundInert(true);
     document.documentElement.classList.add("overlay-open");
@@ -2245,6 +2267,7 @@ function start(topology, defaultRaceData) {
     openStateFeature = null;
     openDistrictFeature = feature;
     openDistrictData = null;
+    writeHash(current.race, feature.id);
     hideTooltip(); // a tap synthesises a hover, which would strand a tooltip over the sheet
     setBackgroundInert(true);
     document.documentElement.classList.add("overlay-open");
@@ -2306,6 +2329,7 @@ function start(topology, defaultRaceData) {
     openDistrictFeature = null;
     openDistrictData = null;
     districtFetchToken++; // cancel whatever district fetch might still be in flight
+    writeHash(current.race);
     hideTooltip();
     setBackgroundInert(false);
     if (restoreFocus && lastFocused) {
@@ -2456,6 +2480,26 @@ function start(topology, defaultRaceData) {
 
   d3.select("#loading").style("display", "none");
   nationalSvg.classed("loading", false);
+
+  // Bring the page to whatever the hash names: at load, and when someone pastes
+  // a different link into a tab that is already open (that is a same-document
+  // navigation, so nothing reloads). Our own writes use replaceState, which
+  // fires no hashchange, so this never feeds back on itself.
+  function applyHash() {
+    const want = readHash();
+    const race = want.race || DEFAULT_RACE;
+    const settle = () => {
+      if (current.race !== race) return; // a newer tab click took over meanwhile
+      const feature = want.unit ? nationalFeatures().find(f => f.id === want.unit) : null;
+      if (!feature || !canOpen(feature)) { closeOverlay({ restoreFocus: false }); writeHash(race); return; }
+      if ((openStateFeature || openDistrictFeature)?.id === feature.id) return;
+      closeOverlay({ restoreFocus: false });
+      openUnit(feature);
+    };
+    if (race === current.race) settle(); else switchRace(race).then(settle);
+  }
+  window.addEventListener("hashchange", applyHash);
+  if (START.unit) applyHash();
 }
 </script>
 </body>

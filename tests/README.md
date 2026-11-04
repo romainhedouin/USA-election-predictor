@@ -34,6 +34,7 @@ Each test is a regression for something that actually shipped broken:
 | `test_house.py` | House grouped by state instead of district, and the lazy district drill-down firing when it shouldn't or hanging when its fetch fails (against a stubbed `/house-district/<geoid>`), and districts redrawn for 2026 showing 2024 results from their old lines. |
 | `test_map_helpers.py` | the geography label, summary tail and per-state county lookup that `map.html` shares across several call sites. |
 | `test_explain.py` | the **?** breakdown drifting from the number it explains (every row's and the total's working must end at the figures on screen), Escape/focus on the popup, and the extra column overflowing a phone. Uses the real baselines, since the shared site's are empty. |
+| `test_url_state.py` | the tab and drill-down not surviving F5 or a shared link; a dismissed drill-down reopening on refresh (every close route must clear it from the URL); malformed or unknown hashes erroring instead of falling back to the default view; the URL adding history entries; and pasting a new link into an open tab doing nothing. |
 | `test_nbc_api.py` *(no browser)* | `nbc_api.py`'s payload normalisation for state and district results. |
 | `test_historical_baseline.py` *(no browser)* | `scripts/build_historical_baseline.py`'s join and aggregation logic. |
 | `test_generate_mock_data.py` *(no browser)* | the mock CSV's header, delimiter and row shape. |
