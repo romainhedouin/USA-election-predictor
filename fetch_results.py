@@ -14,6 +14,9 @@ decision that the server fetches/caches raw data and never computes derived
 values. See map.html for the projection and its per-STATE (or, for House,
 per-DISTRICT) leader-mismatch check, which is why it aggregates every area of
 a state rather than treating each one independently.
+
+Each row also carries the race's strongest candidate who is neither Democrat
+nor Republican (the three Independent columns); see nbc_api._independent_of.
 """
 
 import argparse
@@ -34,10 +37,18 @@ WORKERS = 8  # parallel NBC state requests; keep <= the HTTP pool size (10)
 EXIT_PARTIAL = 3  # some states failed; the file was still written
 
 
+def _independent_cells(independent, votes):
+    """The three appended columns: the race's third candidate, or zero/blank."""
+    if not independent:
+        return [0, "", ""]
+    return [votes, independent["name"], independent["party"]]
+
+
 def state_rows(payload):
     """One CSV row per reporting area of a state."""
     dem_name = payload["candidates"].get("dem", "")
     rep_name = payload["candidates"].get("gop", "")
+    independent = payload.get("independent")
 
     rows = []
     for area in payload["areas"]:
@@ -52,6 +63,7 @@ def state_rows(payload):
              payload["total_expected"], area["votes"], percent_in]
             + real
             + [dem_name, rep_name]
+            + _independent_cells(independent, area.get("independent_votes", 0))
         )
     return rows
 
@@ -82,6 +94,7 @@ def house_rows(districts):
              district["total_expected"], district["votes"], percent_in]
             + real
             + [district["candidates"].get("dem", ""), district["candidates"].get("gop", "")]
+            + _independent_cells(district.get("independent"), district.get("independent_votes", 0))
         )
     return rows
 
@@ -151,6 +164,17 @@ def _state_slug(state_name):
     return state_name.lower().replace(" ", "-")  # NBC's URL slug for a state
 
 
+# What a column holds for a row that was written before the column existed.
+_APPENDED_DEFAULTS = {"Independent Real": "0"}
+
+
+def _padded(row):
+    """A row from an older CSV, widened to today's header. Without this a state
+    that fails on the first refresh after a schema change would be written
+    ragged: valid to the server's checks, misaligned under the new header."""
+    return row + [_APPENDED_DEFAULTS.get(name, "") for name in CSV_HEADER[len(row):]]
+
+
 def carried_forward_rows(previous_csv, failed_slugs, cycle):
     """The failed states' rows from the currently served CSV, if it is live
     data from the same cycle - never mock fixtures or another year's count."""
@@ -161,7 +185,7 @@ def carried_forward_rows(previous_csv, failed_slugs, cycle):
         with open(previous_csv, newline="", encoding="utf-8") as file:
             reader = csv.reader(file, delimiter=";")
             next(reader, None)
-            kept = [row for row in reader if row and _state_slug(row[0]) in failed_slugs]
+            kept = [_padded(row) for row in reader if row and _state_slug(row[0]) in failed_slugs]
     except (OSError, ValueError):
         return []
     if kept:

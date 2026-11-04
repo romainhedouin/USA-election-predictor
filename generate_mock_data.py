@@ -21,6 +21,11 @@ scenario states cover:
     House has no mismatch scenario: each row is already one whole district
     race with no sub-units to aggregate, so its own leader can't flip - see
     HOUSE_SCENARIOS below.
+  - Independent scenarios (Senate, Governor and House only; the President
+    mock has none, so the suite keeps a with/without contrast): a state where
+    the Democrat did not run and an independent is a strong second, one where
+    an independent leads, and ones where an independent is present but under
+    the map's 5% threshold and so must be ignored. See INDEPENDENT_STATES.
   - Every other in-play state (or district) gets a single "no data yet"
     placeholder row.
 
@@ -86,6 +91,40 @@ SCENARIO_STATES = {
 }
 
 
+# Independent candidates, per race. A state listed here uses these counties
+# instead of SCENARIO_STATES' for that race only. Tuples are (county, FIPS,
+# expected votes, % in, Democrat share, Republican share, independent share);
+# a Democrat share of 0 means the Democrat did not run (no name is written).
+# The name is the same kind of placeholder as "Democrat" and "Republican".
+INDEPENDENT_NAME = "Independent"
+INDEPENDENT_STATES = {
+    "senate": {
+        "Idaho": [  # like Nebraska: no Democrat, an independent a strong second; Republican still "certain"
+            ("Ada", "16001", 220000, 97, 0.0, 0.58, 0.42),
+            ("Canyon", "16027", 100000, 96, 0.0, 0.65, 0.35),
+            ("Kootenai", "16055", 90000, 98, 0.0, 0.68, 0.32),
+        ],
+        "Wyoming": [  # an independent at 3%: under the 5% threshold, so the page must ignore them
+            ("Natrona", "56025", 40000, 50, 0.291, 0.679, 0.03),
+            ("Laramie", "56021", 55000, 100, 0.388, 0.582, 0.03),
+            ("Campbell", "56005", 20000, 10, 0.2425, 0.7275, 0.03),
+        ],
+    },
+    "governor": {
+        "Wyoming": [  # an independent leads statewide (and in two of three counties); Republican leads Campbell
+            ("Natrona", "56025", 40000, 50, 0.12, 0.33, 0.55),
+            ("Laramie", "56021", 55000, 100, 0.15, 0.38, 0.47),
+            ("Campbell", "56005", 20000, 10, 0.08, 0.52, 0.40),
+        ],
+        "Vermont": [  # an independent at 2%: ignored
+            ("Chittenden", "50007", 90000, 96, 0.686, 0.294, 0.02),
+            ("Washington", "50023", 40000, 100, 0.637, 0.343, 0.02),
+            ("Windham", "50025", 25000, 97, 0.6664, 0.3136, 0.02),
+        ],
+    },
+}
+
+
 # A handful of real districts (races.py's HOUSE_DISTRICTS uses the same
 # GEOIDs), covering "match" scenarios only - both high-reporting ("certain")
 # and low-reporting ("projected"), for both parties. There is no "mismatch"
@@ -103,7 +142,20 @@ HOUSE_SCENARIOS = {
 }
 
 
-def build_house_row(geoid, total_expected, percent_in, dem_share, rep_share):
+# Districts with an independent, replacing HOUSE_SCENARIOS' for the same GEOID:
+# (total expected votes, % in, Democrat share, Republican share, independent share).
+HOUSE_INDEPENDENT_SCENARIOS = {
+    "1601": (320000, 97, 0.08, 0.40, 0.52),       # Idaho District 1: an independent leads, "certain"
+    "5600": (280000, 20, 0.2425, 0.7275, 0.03),   # Wyoming At-Large: an independent at 3%, ignored
+}
+
+
+def independent_cells(votes, ind_share):
+    """The three appended columns; zeros and blanks when nobody independent ran."""
+    return [votes, INDEPENDENT_NAME, "Independent"] if ind_share else [0, "", ""]
+
+
+def build_house_row(geoid, total_expected, percent_in, dem_share, rep_share, ind_share=0.0):
     info = HOUSE_DISTRICTS[geoid]
     total_votes = round(total_expected * percent_in / 100)
     dem_real = round(total_votes * dem_share)
@@ -112,13 +164,14 @@ def build_house_row(geoid, total_expected, percent_in, dem_share, rep_share):
         info["state"], info["label"], geoid, "districts",
         total_expected, total_votes, float(percent_in),
         dem_real, rep_real,
-        "Democrat", "Republican",
+        "Democrat" if dem_share else "", "Republican",
+        *independent_cells(round(total_votes * ind_share), ind_share),
     ]
 
 
 def build_house_no_data_row(geoid):
     info = HOUSE_DISTRICTS[geoid]
-    return [info["state"], info["label"], geoid, "districts", 0, 0, 0.0, 0, 0, "Democrat", "Republican"]
+    return [info["state"], info["label"], geoid, "districts", 0, 0, 0.0, 0, 0, "Democrat", "Republican", 0, "", ""]
 
 
 def build_state_rows(state_name, counties):
@@ -128,10 +181,11 @@ def build_state_rows(state_name, counties):
     what the real scraper writes (NBC only publishes that estimate per state,
     never per county).
     """
-    state_total_expected = sum(total_expected for _, _, total_expected, _, _, _ in counties)
+    state_total_expected = sum(county[2] for county in counties)
 
     rows = []
-    for county, fips, total_expected, percent_in, dem_share, rep_share in counties:
+    for county, fips, total_expected, percent_in, dem_share, rep_share, *rest in counties:
+        ind_share = rest[0] if rest else 0.0
         county_total_votes = round(total_expected * percent_in / 100)
         dem_real = round(county_total_votes * dem_share)
         rep_real = round(county_total_votes * rep_share)
@@ -139,13 +193,15 @@ def build_state_rows(state_name, counties):
             state_name, county, fips, "counties",
             state_total_expected, county_total_votes, float(percent_in),
             dem_real, rep_real,
-            "Democrat", "Republican",
+            # A Democrat share of 0 beside an independent means no Democrat ran.
+            "" if ind_share and not dem_share else "Democrat", "Republican",
+            *independent_cells(round(county_total_votes * ind_share), ind_share),
         ])
     return rows
 
 
 def build_no_data_row(state_name):
-    return [state_name, "Statewide", "", "counties", 0, 0, 0.0, 0, 0, "Democrat", "Republican"]
+    return [state_name, "Statewide", "", "counties", 0, 0, 0.0, 0, 0, "Democrat", "Republican", 0, "", ""]
 
 
 def print_state_summary(state_name, rows):
@@ -153,14 +209,18 @@ def print_state_summary(state_name, rows):
     # computes it client-side now, using the historical-swing model where a
     # baseline exists. None of these mock rows have one, so replicate its
     # flat fallback here just for this debug summary.
-    real_d = sum(row[7] for row in rows)
-    real_r = sum(row[8] for row in rows)
-    predicted_d = sum(row[7] * 100 / row[6] for row in rows if row[6])
-    predicted_r = sum(row[8] * 100 / row[6] for row in rows if row[6])
-    raw_leader = "Democrat" if real_d > real_r else "Republican"
-    predicted_leader = "Democrat" if predicted_d > predicted_r else "Republican"
+    real = {"Democrat": sum(row[7] for row in rows), "Republican": sum(row[8] for row in rows),
+            "Independent": sum(row[11] for row in rows)}
+    predicted = {
+        "Democrat": sum(row[7] * 100 / row[6] for row in rows if row[6]),
+        "Republican": sum(row[8] * 100 / row[6] for row in rows if row[6]),
+        "Independent": sum(row[11] * 100 / row[6] for row in rows if row[6]),
+    }
+    raw_leader = max(real, key=real.get)
+    predicted_leader = max(predicted, key=predicted.get)
     flip = "MISMATCH" if raw_leader != predicted_leader else "match"
-    print(f"{state_name}: raw leader {raw_leader} ({real_d} vs {real_r}), predicted leader {predicted_leader} ({predicted_d} vs {predicted_r}) -> {flip}")
+    shown = lambda totals: " vs ".join(str(round(v)) for v in totals.values() if v)
+    print(f"{state_name}: raw leader {raw_leader} ({shown(real)}), predicted leader {predicted_leader} ({shown(predicted)}) -> {flip}")
 
 
 def main():
@@ -175,16 +235,19 @@ def main():
         # Districts, not states - HOUSE_DISTRICTS/HOUSE_SCENARIOS are both
         # keyed by GEOID, so this is its own small loop rather than forcing
         # county-shaped build_state_rows()/build_no_data_row() to fit.
+        scenarios = {**HOUSE_SCENARIOS, **HOUSE_INDEPENDENT_SCENARIOS}
         rows = [
-            build_house_row(geoid, *HOUSE_SCENARIOS[geoid]) if geoid in HOUSE_SCENARIOS
+            build_house_row(geoid, *scenarios[geoid]) if geoid in scenarios
             else build_house_no_data_row(geoid)
             for geoid in HOUSE_DISTRICTS
         ]
-        data_states = HOUSE_SCENARIOS
+        data_states = scenarios
         in_play_states = HOUSE_DISTRICTS
     else:
         in_play_states = list(RACES[args.race]["weights"].keys())
-        data_states = {name: SCENARIO_STATES[name] for name in in_play_states if name in SCENARIO_STATES}
+        independents = INDEPENDENT_STATES.get(args.race, {})
+        data_states = {name: independents.get(name, SCENARIO_STATES.get(name)) for name in in_play_states
+                       if name in independents or name in SCENARIO_STATES}
 
         rows = []
         for state_name in in_play_states:

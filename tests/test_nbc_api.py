@@ -73,11 +73,13 @@ def test_state_results_normalises_a_real_shaped_payload(monkeypatch):
     assert result["percent_in"] == 80.0
     assert result["last_modified"] == "2026-11-03T22:00:00Z"
     assert result["candidates"] == {"dem": "A Dem", "gop": "A Gop"}
+    # Nobody but a Democrat and a Republican ran, so there is no third candidate.
+    assert result["independent"] is None
     assert result["areas"] == [
         {"name": "Alachua", "fips": "12001", "percent_in": 100.0, "votes": 1000,
-         "by_party": {"dem": 600, "gop": 400}},
+         "by_party": {"dem": 600, "gop": 400}, "independent_votes": 0},
         {"name": "Baker", "fips": "12003", "percent_in": 50.0, "votes": 200,
-         "by_party": {"dem": 50, "gop": 150}},
+         "by_party": {"dem": 50, "gop": 150}, "independent_votes": 0},
     ]
 
 
@@ -95,9 +97,10 @@ def test_district_results_normalises_a_real_shaped_payload(monkeypatch):
     assert result["percent_in"] == 90.0
     assert result["last_modified"] == "2026-11-03T23:00:00Z"
     assert result["candidates"] == {"dem": "D Cand", "gop": "R Cand"}
+    assert result["independent"] is None
     assert result["areas"] == [
         {"name": "Alachua", "fips": "12001", "percent_in": 100.0, "votes": 900,
-         "by_party": {"dem": 500, "gop": 400}},
+         "by_party": {"dem": 500, "gop": 400}, "independent_votes": 0},
     ]
 
 

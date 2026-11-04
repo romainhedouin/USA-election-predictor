@@ -195,10 +195,19 @@ HOUSE_LAST_ELECTED = RACES["house"]["election_year"] - 2
 # (Real * 100/PercentIn) computed here and written to the CSV, but the
 # projection math (flat or historical-swing) now runs client-side in
 # estimate.js - see map.html. This file writes real counts only.
+#
+# The last three columns carry the one candidate per race who is neither
+# Democrat nor Republican and polls best (an independent, or whoever else NBC
+# lists). They are APPENDED, never inserted: an older CSV on a deployed volume
+# lacks them, map.html reads every column by name and treats a missing one as
+# "no such candidate", and fetch_results.carried_forward_rows pads old rows to
+# this width. The first eleven columns must never move. "Total Votes" is NBC's
+# all-candidate count, so it can exceed Democrat + Republican + Independent.
 CSV_HEADER = [
     "State", "Area", "FIPS", "Geography", "State Total Expected", "Total Votes", "Percent In",
     "Democrat Real", "Republican Real",
     "Democrat Name", "Republican Name",
+    "Independent Real", "Independent Name", "Independent Party",
 ]
 
 

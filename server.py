@@ -536,9 +536,11 @@ def _house_district_payload(geoid):
                         "votes": area["votes"],
                         "demReal": area["by_party"].get("dem", 0),
                         "repReal": area["by_party"].get("gop", 0),
+                        "indReal": area.get("independent_votes", 0),
                     }
                     for area in result["areas"]
                 ]
+                independent = result.get("independent") or {}
                 payload = {
                     "geoid": result["geoid"],
                     "label": result["label"],
@@ -549,6 +551,8 @@ def _house_district_payload(geoid):
                     "percentIn": result["percent_in"],
                     "demName": result["candidates"].get("dem", "Democrat"),
                     "repName": result["candidates"].get("gop", "Republican"),
+                    "indName": independent.get("name", ""),
+                    "indParty": independent.get("party", ""),
                     "lastModified": result["last_modified"],
                     "areas": areas,
                 }

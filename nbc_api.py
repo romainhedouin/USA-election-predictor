@@ -245,16 +245,20 @@ def _summary_fields(payload, race, fips_by_name):
     the same way from a race's summary/areas - factored out so the two stay
     in lockstep rather than drifting if one is edited and not the other."""
     summary = race.get("summary") or {}
+    # Fixed once for the whole race, from the race summary, so every county
+    # reports the votes of the same person - see _independent_of.
+    independent = _independent_of(summary.get("candidates") or [])
     return {
         "total_expected": int(summary.get("votes") or 0) + int((summary.get("estimatedVotesRemaining") or {}).get("value") or 0),
         "percent_in": float(summary.get("percentIn") or 0),
         "last_modified": payload.get("lastModified"),
         "candidates": _leading_by_party(summary.get("candidates") or []),
-        "areas": _build_areas(race.get("areas") or [], fips_by_name),
+        "independent": independent,
+        "areas": _build_areas(race.get("areas") or [], fips_by_name, independent),
     }
 
 
-def _build_areas(areas_raw, fips_by_name):
+def _build_areas(areas_raw, fips_by_name, independent=None):
     return [
         {
             "name": area["name"],
@@ -262,6 +266,7 @@ def _build_areas(areas_raw, fips_by_name):
             "percent_in": float(area.get("percentIn") or 0),
             "votes": int(area.get("votes") or 0),
             "by_party": _votes_by_party(area.get("candidates") or []),
+            "independent_votes": _votes_for(area.get("candidates") or [], independent),
         }
         for area in areas_raw
     ]
@@ -284,6 +289,9 @@ def house_results(cycle):
         tooltip = entry.get("tooltip") or {}
         candidates = tooltip.get("candidates") or []
         votes = int(tooltip.get("totalVote") or 0)
+        # Chosen per district: each is its own race, and the House feed has no
+        # candidate ids to match on, so names do.
+        independent = _independent_of(candidates)
         districts.append({
             "geoid": _fix_at_large_geoid(geoid),
             "percent_in": float(tooltip.get("percentIn") or 0),
@@ -291,6 +299,8 @@ def house_results(cycle):
             "total_expected": votes + int(tooltip.get("remainingVote") or 0),
             "by_party": _votes_by_party(candidates),
             "candidates": _leading_by_party(candidates),
+            "independent": independent,
+            "independent_votes": _votes_for(candidates, independent),
         })
     return districts, payload.get("lastModified")
 
@@ -330,3 +340,87 @@ def _leading_by_party(candidates):
         if party not in best or votes > best[party][1]:
             best[party] = (candidate.get("name", ""), votes)
     return {party: name for party, (name, _) in best.items()}
+
+
+# ---- The third candidate -------------------------------------------------
+#
+# Every race the map draws is Democrat against Republican, but NBC lists
+# everyone, and some third candidates are real contenders (Nebraska's Dan
+# Osborn held 43.7% of a 715,000-vote count). One per race is carried through:
+# the strongest candidate who is neither Democrat nor Republican.
+#
+# This is deliberately NOT "whoever NBC labels independent". NBC's labels are
+# not reliable for that: Osborn is coded "other", Kevin Kiley "NPP" in the
+# House feed but "other" in the district feed, and the House feed alone uses
+# 26 different party codes. Summing by code is no better - Nebraska's "other"
+# adds Osborn to three candidates under 3% each and would read as a 49.7% bloc.
+
+_MAJOR_PARTIES = frozenset({"dem", "gop"})
+
+# The party codes that say something on their own. Everything else - NBC's
+# "other"/"Oth" catch-all and a long tail of one-off state parties - is left
+# unlabelled rather than guessed at, so the page shows just the name.
+_PARTY_LABELS = {
+    "ind": "Independent",
+    "lib": "Libertarian",
+    "grn": "Green",
+    "npa": "No party affiliation",
+    "np": "Nonpartisan",
+    "npp": "No party preference",
+    "una": "Unaffiliated",
+    "nol": "No Labels",
+}
+
+
+def _name_key(name):
+    return " ".join((name or "").split()).casefold()
+
+
+def _is_write_in(name):
+    """NBC lists write-ins as lines of their own: "Total Write-ins" (the House
+    feed even pads it with a leading space), "Jane Doe (write-in)", and in
+    Nevada "None of These Candidates". None of them is a candidate to draw."""
+    lowered = (name or "").strip().lower()
+    return "write-in" in lowered or "write in" in lowered or "none of these" in lowered
+
+
+def _independent_of(candidates):
+    """The strongest non-Democrat, non-Republican candidate with any votes, as
+    {"name", "party", "code"}, or None. Ties go to NBC's own listing order,
+    then the name, so two refreshes of the same count agree."""
+    contenders = [
+        candidate for candidate in candidates
+        if _party_code(candidate) not in _MAJOR_PARTIES
+        and not _is_write_in(candidate.get("name"))
+        and int(candidate.get("votes") or 0) > 0
+    ]
+    if not contenders:
+        return None
+
+    def rank(candidate):
+        order = candidate.get("order")
+        return (-int(candidate.get("votes") or 0), order if isinstance(order, int) else 10**6, candidate.get("name") or "")
+
+    best = min(contenders, key=rank)
+    return {
+        "name": (best.get("name") or "").strip(),
+        "party": _PARTY_LABELS.get(_party_code(best), ""),
+        "code": best.get("code"),
+    }
+
+
+def _votes_for(candidates, independent):
+    """What the chosen candidate got in one area: matched on NBC's candidate
+    code where both sides have one, else on the name. 0 if not listed."""
+    if not independent:
+        return 0
+    code, name = independent.get("code"), _name_key(independent.get("name"))
+    total = 0
+    for candidate in candidates:
+        if code is not None and candidate.get("code") is not None:
+            same = candidate["code"] == code
+        else:
+            same = _name_key(candidate.get("name")) == name
+        if same:
+            total += int(candidate.get("votes") or 0)
+    return total
