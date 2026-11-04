@@ -165,7 +165,7 @@ to paste all of them at once).
 | Variable | Value | Why |
 | --- | --- | --- |
 | `DATA_DIR` | `/data` | Must equal the volume mount path. |
-| `REFRESH_SECONDS` | `600` | 10 min. NBC itself updates every 15s; the floor here is 30s. |
+| `REFRESH_SECONDS` | `60` | 1 min. NBC itself updates every 15s; the floor here is 30s. |
 | `NBC_CYCLE` | unset, or `2026` | Senate, Governor and House already default to NBC's `2026` pages (`races.py`). Do not set it while `RACES` includes `president`: NBC has no 2026 or 2028 president pages, so it would 404. |
 | `RACES` | `senate,governor,house` | The three 2026 races. Leave `president` out: it has no 2026 pages and keeps serving its last 2024 file. |
 | `FETCH_TIMEOUT` | `300` | Hard kill per race. ~10s expected, so 300 is very generous. |
@@ -183,7 +183,7 @@ form is deprecated — <https://docs.railway.com/cli/variable>):
 
 ```bash
 railway variable set DATA_DIR=/data --skip-deploys
-railway variable set REFRESH_SECONDS=600 --skip-deploys
+railway variable set REFRESH_SECONDS=60 --skip-deploys
 railway variable delete NBC_CYCLE --skip-deploys   # the race config already says 2026
 railway variable set RACES=senate,governor,house --skip-deploys
 railway variable set REFRESH_ENABLED=1 --skip-deploys
