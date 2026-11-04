@@ -15,6 +15,12 @@ const {
   stateShareFromCounties,
   shiftedCountyBaseline,
   confidenceParts,
+  turnoutBasis,
+  turnoutTrust,
+  turnoutScale,
+  stateBallotEstimate,
+  TURNOUT_SCALE_MIN,
+  TURNOUT_SCALE_MAX,
 } = require("../estimate.js");
 
 test("confidenceWeight is 0 with nothing counted", () => {
@@ -222,4 +228,80 @@ test("the flat fallback reports the scale it applied", () => {
   assert.equal(r.scale, 4);
   assert.equal(r.demPredicted, 300 * r.scale);
   assert.equal(r.repPredicted, 200 * r.scale);
+});
+
+// ---- expected total ballots: turnout scaling ----
+
+// The worked example: a 4-county state, every county cast 100k last time; 3
+// have reported and each projects to 120k this time.
+const FOUR_COUNTIES = ["1", "2", "3", "4"].map(f => [f, { votes: 100000 }]);
+const reporting = (fips, total) => fips.map(f => ({ fips: f, demPredicted: total / 2, repPredicted: total / 2 }));
+
+test("turnoutBasis compares reporting counties with the same counties' last-cycle votes", () => {
+  const basis = turnoutBasis(reporting(["1", "2", "3"], 120000), FOUR_COUNTIES);
+  assert.deepEqual(basis, { projected: 360000, historical: 300000, stateHistorical: 400000, ratio: 1.2 });
+});
+
+test("worked example: 3 of 4 counties at 120k vs 100k scale the silent county's 100k to 120k (460k -> 480k)", () => {
+  const basis = turnoutBasis(reporting(["1", "2", "3"], 120000), FOUR_COUNTIES);
+  assert.equal(turnoutTrust(basis), 1);       // they hold 75% of last time's vote, well past 30%
+  assert.ok(Math.abs(turnoutScale(basis) - 1.2) < 1e-12);
+  assert.ok(Math.abs(360000 + 100000 * turnoutScale(basis) - 480000) < 1e-6);
+});
+
+test("the state-keyed form lands on the same 480k, not the flat 400k historical total", () => {
+  const basis = turnoutBasis(reporting(["1", "2", "3"], 120000), FOUR_COUNTIES);
+  assert.ok(Math.abs(stateBallotEstimate(360000, 400000, basis) - 480000) < 1e-6);
+});
+
+test("a reporting county with no baseline entry is left out of BOTH sides of the ratio", () => {
+  // Including its projection but not its history would inflate the ratio.
+  const areas = [...reporting(["1", "2"], 100000), ...reporting(["99"], 500000)];
+  const basis = turnoutBasis(areas, FOUR_COUNTIES);
+  assert.equal(basis.projected, 200000);
+  assert.equal(basis.historical, 200000);
+  assert.equal(basis.ratio, 1);
+});
+
+test("turnout counted below the baseline shrinks the estimate (a midterm against a presidential year)", () => {
+  const basis = turnoutBasis(reporting(["1", "2", "3"], 70000), FOUR_COUNTIES);
+  assert.ok(Math.abs(turnoutScale(basis) - 0.7) < 1e-12);
+  assert.ok(Math.abs(stateBallotEstimate(210000, 400000, basis) - 280000) < 1e-6);
+});
+
+test("trust ramps up to full at 30% of last cycle's vote, and below that blends toward 'no adjustment'", () => {
+  // One county of four holds 25% of last time's vote: trust 0.25 / 0.3.
+  const basis = turnoutBasis(reporting(["1"], 200000), FOUR_COUNTIES);
+  const trust = turnoutTrust(basis);
+  assert.ok(Math.abs(trust - 0.25 / 0.3) < 1e-12);
+  assert.ok(Math.abs(turnoutScale(basis) - (1 + trust * 1)) < 1e-12); // ratio is 2.0
+  // One tiny county of a big state proves almost nothing.
+  const tiny = turnoutBasis(reporting(["1"], 200000),
+    [["1", { votes: 1000 }], ["2", { votes: 999000 }]]);
+  assert.ok(turnoutTrust(tiny) < 0.01);
+});
+
+test("trust 0 (nothing comparable) means exactly today's numbers", () => {
+  assert.equal(turnoutScale(null), 1);
+  assert.equal(stateBallotEstimate(360000, 400000, null), 400000);
+  assert.equal(turnoutBasis([], FOUR_COUNTIES), null);
+  assert.equal(turnoutBasis(reporting(["1"], 1), []), null);
+  assert.equal(turnoutBasis(reporting(["99"], 1), FOUR_COUNTIES), null);
+});
+
+test("the scale is clamped, so one freak early county cannot move the estimate more than 2x either way", () => {
+  const huge = turnoutBasis(reporting(["1", "2", "3"], 10000000), FOUR_COUNTIES);
+  assert.equal(turnoutScale(huge), TURNOUT_SCALE_MAX);
+  assert.equal(stateBallotEstimate(30000000, 400000, huge), 400000 * TURNOUT_SCALE_MAX);
+  const tiny = turnoutBasis(reporting(["1", "2", "3"], 1000), FOUR_COUNTIES);
+  assert.equal(turnoutScale(tiny), TURNOUT_SCALE_MIN);
+  assert.equal(stateBallotEstimate(3000, 400000, tiny), 400000 * TURNOUT_SCALE_MIN);
+});
+
+test("non-finite and non-positive inputs never produce NaN", () => {
+  const nan = turnoutBasis([{ fips: "1", demPredicted: NaN, repPredicted: 5 }], FOUR_COUNTIES);
+  assert.equal(nan, null);
+  assert.equal(stateBallotEstimate(360000, 0, null), 0);
+  const basis = turnoutBasis(reporting(["1", "2", "3"], 120000), FOUR_COUNTIES);
+  assert.equal(stateBallotEstimate(360000, 0, basis), 0);
 });

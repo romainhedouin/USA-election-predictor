@@ -38,6 +38,12 @@ const VOTE_TRUST_THRESHOLD = 0.5;
 // expected vote" is known even for areas that haven't reported at all.
 const AREA_VOTE_TRUST_THRESHOLD = 0.3;
 
+// How far a state's expected total ballots may be moved from its baseline
+// by the turnout observed so far, as a multiple. A guard against one freak
+// early county, on top of the trust ramp below.
+const TURNOUT_SCALE_MIN = 0.5;
+const TURNOUT_SCALE_MAX = 2;
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -200,7 +206,77 @@ function estimateArea(area, historicalEntry, reportingVoteFraction) {
   };
 }
 
+// ---- Expected total ballots for a whole state ----
+//
+// A county that has not reported yet is sized by what it cast last time. That
+// ignores how this cycle's turnout is running: if the counties already in are
+// projecting 20% above their own last-cycle totals, the rest probably will too
+// (and in a midterm, the reverse). The ratio estimator below scales the
+// unreported part by that observed ratio, but only as far as it can be trusted.
+
+// Compares the counties that have reported with what the same counties cast
+// last time. `areas` is the reporting areas ({fips, demPredicted, repPredicted});
+// `stateEntries` is [fips, {votes}] for EVERY county of the state in the
+// baseline. Only reporting counties that have a baseline entry count, on both
+// sides, so the ratio compares like with like. Null when there is nothing to
+// compare.
+function turnoutBasis(areas, stateEntries) {
+  const votesByFips = new Map();
+  let stateHistorical = 0;
+  for (const [fips, entry] of stateEntries) {
+    if (!entry || !(entry.votes > 0)) continue;
+    votesByFips.set(fips, entry.votes);
+    stateHistorical += entry.votes;
+  }
+  let projected = 0, historical = 0;
+  for (const area of areas) {
+    const votes = votesByFips.get(area.fips);
+    const total = area.demPredicted + area.repPredicted;
+    if (!votes || !Number.isFinite(total)) continue;
+    projected += total;
+    historical += votes;
+  }
+  if (!(historical > 0) || !(stateHistorical > 0)) return null;
+  return { projected, historical, stateHistorical, ratio: projected / historical };
+}
+
+// 0 (ignore the observed turnout) to 1 (use it fully): the share of the
+// state's last-cycle vote that the reporting counties hold, against the same
+// 30% bar the swing model uses. One small county in proves nothing.
+function turnoutTrust(basis) {
+  if (!basis) return 0;
+  return clamp(basis.historical / basis.stateHistorical / AREA_VOTE_TRUST_THRESHOLD, 0, 1);
+}
+
+// County-reported races: the multiple to apply to the unreported counties'
+// last-cycle votes. 1 means "no adjustment".
+function turnoutScale(basis) {
+  const trust = turnoutTrust(basis);
+  if (!basis || !(trust > 0)) return 1;
+  return clamp(1 + trust * (basis.ratio - 1), TURNOUT_SCALE_MIN, TURNOUT_SCALE_MAX);
+}
+
+// State-keyed races (Senate/Governor) have only one baseline total for the
+// whole state, so the weights are another race's county votes (President).
+// What the state would reach if the rest of it matches the counties already
+// in is projected / share; blend that with the baseline total by trust, and
+// keep the result within the same multiple of the baseline as above.
+function stateBallotEstimate(projected, baselineTotal, basis) {
+  const trust = turnoutTrust(basis);
+  if (!basis || !(trust > 0) || !(baselineTotal > 0)) return baselineTotal;
+  const share = basis.historical / basis.stateHistorical;
+  const byTurnout = projected / share;
+  const blended = (1 - trust) * baselineTotal + trust * byTurnout;
+  return clamp(blended, baselineTotal * TURNOUT_SCALE_MIN, baselineTotal * TURNOUT_SCALE_MAX);
+}
+
 const api = {
+  TURNOUT_SCALE_MIN,
+  TURNOUT_SCALE_MAX,
+  turnoutBasis,
+  turnoutTrust,
+  turnoutScale,
+  stateBallotEstimate,
   VOTE_TRUST_THRESHOLD,
   AREA_VOTE_TRUST_THRESHOLD,
   observedSwing,

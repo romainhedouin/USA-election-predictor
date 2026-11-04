@@ -984,13 +984,30 @@ function explainTotals(agg, areas, ctx) {
     + `D <code>${numberFmt(agg.demPredicted)}</code>, R <code>${numberFmt(agg.repPredicted)}</code>`);
   const projected = agg.demPredicted + agg.repPredicted;
   let ballots;
-  if (agg.ballotEstimateOverride != null) {
+  const t = agg.turnout;
+  if (t) {
+    step("Turnout so far", `the reporting counties are projected at <code>${numberFmt(t.projected)}</code> two-party votes, against `
+      + `<code>${numberFmt(t.historical)}</code> in ${t.kind === "share" ? "the 2024 presidential race" : "2024"} `
+      + `(<code>&times;${t.ratio.toFixed(3)}</code>). That is only trusted once counties holding ${estimate.AREA_VOTE_TRUST_THRESHOLD * 100}% `
+      + `of the state's ${t.kind === "share" ? "2024 presidential" : "2024"} vote have reported; they hold `
+      + `<code>${pctText(t.historical / t.stateHistorical)}</code>, so the trust is <code>${t.trust.toFixed(3)}</code>`);
+  }
+  if (agg.ballotEstimateOverride != null && t) {
+    const byTurnout = projected / (t.historical / t.stateHistorical);
+    ballots = `the previous election's two-party total (<code>${numberFmt(t.baseline)}</code>) blended with what the state `
+      + `would reach if the rest of it turns out like the counties already in (<code>${numberFmt(projected)} ÷ `
+      + `${pctText(t.historical / t.stateHistorical)} = ${numberFmt(byTurnout)}</code>), by that trust, kept within `
+      + `&times;${estimate.TURNOUT_SCALE_MIN}&ndash;&times;${estimate.TURNOUT_SCALE_MAX} of the previous total and never below the projected total`;
+  } else if (agg.ballotEstimateOverride != null) {
     ballots = `the larger of the projected two-party total (<code>${numberFmt(projected)}</code>) and the previous `
       + `election's two-party total (<code>${numberFmt(agg.ballotEstimateOverride)}</code>)`;
   } else if (agg.silentCount) {
+    const scale = t ? t.scale : 1;
     ballots = `the projected two-party total (<code>${numberFmt(projected)}</code>) plus the 2024 two-party turnout of `
-      + `the ${agg.silentCount} ${agg.silentCount === 1 ? "county" : "counties"} with nothing counted yet (<code>${numberFmt(agg.silentBallots)}</code>) `
-      + `&mdash; used for the size of the race only, never for either side's projection`;
+      + `the ${agg.silentCount} ${agg.silentCount === 1 ? "county" : "counties"} with nothing counted yet (<code>${numberFmt(agg.silentBallots)}</code>)`
+      + (t ? `, scaled by the turnout so far (<code>1 + ${t.trust.toFixed(3)} × (${t.ratio.toFixed(3)} − 1) = &times;${scale.toFixed(3)}</code>, `
+        + `kept within &times;${estimate.TURNOUT_SCALE_MIN}&ndash;&times;${estimate.TURNOUT_SCALE_MAX})` : "")
+      + ` &mdash; used for the size of the race only, never for either side's projection`;
   } else {
     ballots = `the projected two-party total`;
   }
@@ -1003,7 +1020,8 @@ function explainTotals(agg, areas, ctx) {
 }
 
 // The same way the tests call clampToViewport directly.
-Object.assign(window.__mapTest, { explainArea, explainTotals });
+// buildRaceData and friends are exported so a test can feed them synthetic rows.
+Object.assign(window.__mapTest, { explainArea, explainTotals, buildRaceData, stateStatusFor, parseRaceCsv });
 
 // Two things map.html can't get from any single area, both answered by the
 // same question - "which of this state's counties does the caller not have
@@ -1125,6 +1143,20 @@ function chooseBaseline(area, race, historical, historicalKeyOf, countyBaselineO
   return none(area.fips ? "noCountyEntry" : "notCounty");
 }
 
+// How this cycle's turnout compares with the baseline, for one state's
+// reporting areas (estimate.turnoutBasis), or null when it cannot be told.
+// County-reported races compare against their own county baseline; the
+// state-keyed ones (Senate/Governor) have only a statewide total, so the
+// weights come from the President baseline's counties. District races and
+// states reported below county level have no county weights at all.
+function turnoutFor(race, areas, historical, countyReference) {
+  if (isDistrictRace(race)) return null;
+  const weights = RACE_META[race].historicalKey === "state" ? countyReference : historical;
+  const prefix = areas.map(a => a.fips).find(Boolean)?.slice(0, 2);
+  if (!weights || !prefix) return null;
+  return estimate.turnoutBasis(areas, historicalByPrefix(weights).get(prefix) || []);
+}
+
 // historical is this race's parsed historical_<race>.json (or {} if it
 // hasn't loaded yet / doesn't exist) - see loadHistoricalBaseline(). Areas
 // missing from it (no seat-year match, non-county geography, a
@@ -1240,12 +1272,27 @@ function buildRaceData(rows, race, historical, countyReference, meta) {
     // historical vote total, used directly since there's no per-county
     // split to build a silent-counties sum from - Math.max guards against
     // ever showing a total smaller than what's already been counted.
-    agg.ballotEstimate = ballotEstimateOverride != null
-      ? Math.max(ballotEstimateOverride, agg.demPredicted + agg.repPredicted)
-      : agg.demPredicted + agg.repPredicted + silentDemPredicted + silentRepPredicted;
+    //
+    // Both baselines are last cycle's turnout, which this cycle may be running
+    // above or below. The counties already in say by how much (see
+    // estimate.turnoutBasis), so the part of the state still to come is scaled
+    // by that - as far as the evidence can be trusted. This moves only the
+    // expected total ballots (and so "% in" and the call), never a projection.
+    const projectedBallots = agg.demPredicted + agg.repPredicted;
+    const silentBallots = silentDemPredicted + silentRepPredicted;
+    const turnout = turnoutFor(race, areas, historical, countyReference);
+    if (ballotEstimateOverride != null) {
+      const baseline = Math.max(ballotEstimateOverride, projectedBallots);
+      agg.ballotEstimate = Math.max(estimate.stateBallotEstimate(projectedBallots, baseline, turnout), projectedBallots);
+      agg.turnout = turnout && { kind: "share", trust: estimate.turnoutTrust(turnout), baseline, ...turnout };
+    } else {
+      const scale = estimate.turnoutScale(turnout);
+      agg.ballotEstimate = projectedBallots + silentBallots * scale;
+      agg.turnout = turnout && silentBallots > 0
+        ? { kind: "scale", trust: estimate.turnoutTrust(turnout), scale, ...turnout } : null;
+    }
     // Kept so the "?" breakdown can show where ballotEstimate came from.
-    Object.assign(agg, { ballotEstimateOverride, silentBallots: silentDemPredicted + silentRepPredicted,
-                         silentCount, reportingVoteFraction });
+    Object.assign(agg, { ballotEstimateOverride, silentBallots, silentCount, reportingVoteFraction });
     stateAggregates.set(stateKey, agg);
   }
 
