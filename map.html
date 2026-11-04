@@ -80,7 +80,13 @@
        screen. Lower it for a bigger map plus a little scroll, raise it to
        guarantee none. */
     --map-chrome: 26.1rem;
+    /* What a race with a contender adds to that budget: the legend's extra item
+       and the scoreboard's independent line. Zero otherwise, so every other
+       race is sized exactly as before. */
+    --chrome-extra: 0rem;
   }
+  :root:has(#legend-ind:not([hidden])) { --chrome-extra: 1.5rem; }
+  :root:has(#legend-ind:not([hidden])):has(.ind-note) { --chrome-extra: 3.1rem; }
 
   /* Colour-blind mode. The light tints above sit almost entirely on the
      red-green axis, which is the axis protanopia and deuteranopia remove, so
@@ -260,6 +266,18 @@
   .scoreboard .side-label { font-size: 0.82rem; color: var(--muted); margin-bottom: 0.15rem; }
   .scoreboard .side-total { font-size: clamp(1.1rem, 0.85rem + 1.4vw, 1.5rem); font-weight: 600; line-height: 1.15; }
   .scoreboard .side-breakdown { font-size: 0.78rem; color: var(--muted); }
+  /* Independent seats are a line under the bar, not a third column: three
+     columns leave a 360px phone 91px each, too narrow for "3 governorships". */
+  .scoreboard .ind-note { flex: 1 1 100%; display: flex; align-items: center; gap: 0.4rem;
+                          font-size: 0.78rem; color: var(--muted); margin-top: 0.1rem; }
+  .scoreboard .ind-note i { width: 11px; height: 11px; border-radius: 2px; flex: none; }
+  /* On a phone the note joins the existing win-note line (already two lines) rather
+     than adding a third: the default tab fits a 360px screen with no room to spare. */
+  .scoreboard .win-ind { display: none; }
+  @media (max-width: 640px) {
+    .scoreboard .ind-note { display: none; }
+    .scoreboard .win-ind { display: inline; }
+  }
   .scoreboard .bar { height: 10px; border-radius: 6px; overflow: hidden; display: flex; margin: 0.25rem 0 0; flex: 1 1 100%; }
   .scoreboard .bar div { height: 100%; }
   .scoreboard .win-note { font-size: 0.78rem; color: var(--muted); flex: 1 1 100%; margin-top: 0.15rem; }
@@ -274,7 +292,7 @@
      negative and would otherwise collapse the map to nothing. */
   #map {
     display: block; margin-inline: auto;
-    width: min(100%, max(280px, calc((100svh - var(--map-chrome)) * 975 / 610)));
+    width: min(100%, max(280px, calc((100svh - var(--map-chrome) - var(--chrome-extra)) * 975 / 610)));
     aspect-ratio: 975 / 610;
     transition: opacity 0.25s ease;
   }
@@ -346,10 +364,23 @@
   .sw-dem-projected { background: var(--dem-projected); }
   .sw-rep-projected { background: var(--rep-projected); }
   .sw-no-race       { background: repeating-linear-gradient(45deg,  var(--no-race) 0 4px, var(--no-race-line) 4px 5.4px); }
+  .sw-ind-faint     { background: var(--ind-faint); }
+  .sw-ind-projected { background: var(--ind-projected); }
+  .sw-ind-certain   { background: var(--ind-certain); }
   #legend .mismatch-swatch { background: var(--no-data); border: 2px solid var(--mismatch); }
+  /* One item with the same three tints as the others, only while the race on
+     screen has a contender. The [hidden] rule must be this specific: the
+     generic "#legend span" above would otherwise keep it displayed. */
+  #legend .legend-ind { gap: 0.25rem; }
+  #legend .legend-ind[hidden] { display: none; }
   :root[data-palette="cvd"] .sw-dem-faint { background: repeating-linear-gradient(45deg,  var(--no-data) 0 4px, var(--dem-projected) 4px 4.9px); }
   :root[data-palette="cvd"] .sw-rep-faint { background: repeating-linear-gradient(-45deg, var(--no-data) 0 4px, var(--rep-projected) 4px 4.9px); }
   :root[data-palette="cvd"] .sw-dem-projected { background: repeating-linear-gradient(45deg,  var(--dem-projected) 0 4px, var(--dem-certain) 4px 5.4px); }
+  /* An independent: vertical stripes where the others are diagonal, and dots (not
+     a flat fill) where it is certain - the same patterns buildDefs draws. */
+  :root[data-palette="cvd"] .sw-ind-faint     { background: repeating-linear-gradient(90deg, var(--no-data) 0 4px, var(--ind-certain) 4px 4.6px); }
+  :root[data-palette="cvd"] .sw-ind-projected { background: repeating-linear-gradient(90deg, var(--ind-projected) 0 4px, var(--ind-certain) 4px 5.4px); }
+  :root[data-palette="cvd"] .sw-ind-certain   { background: radial-gradient(circle at 2.5px 2.5px, var(--ind-projected) 0 1px, var(--ind-certain) 1.2px) 0 0 / 5px 5px; }
   :root[data-palette="cvd"] .sw-rep-projected { background: repeating-linear-gradient(-45deg, var(--rep-projected) 0 4px, var(--rep-certain) 4px 5.4px); }
   :root[data-palette="cvd"] #legend .mismatch-swatch { border-style: dashed; }
 
@@ -437,6 +468,11 @@
   #overlay-table td.proj { color: var(--muted); }
   #overlay-table td.dem-now { color: var(--dem-certain); font-weight: 600; }
   #overlay-table td.rep-now { color: var(--rep-certain); font-weight: 600; }
+  #overlay-table td.ind-now { color: var(--ind-certain); font-weight: 600; }
+  #overlay-table .th-short { display: none; font-weight: 700; }
+  #overlay-table th.party-dem .th-short { color: var(--dem-certain); }
+  #overlay-table th.party-rep .th-short { color: var(--rep-certain); }
+  #overlay-table th.party-ind .th-short { color: var(--ind-certain); }
   .proj-inline { display: none; }
   #overlay-table caption { caption-side: top; text-align: left; font-size: 0.74rem; color: var(--muted); padding: 0 0 0.45rem; }
 
@@ -494,6 +530,7 @@
     /* The tabs drop below the title here, so the map has less height to work
        with - measured, not guessed: see tests/test_layout.py. */
     :root { --map-chrome: 34.5rem; }
+    :root:has(#legend-ind:not([hidden])):has(.ind-note) { --chrome-extra: 3.4rem; }
     header { display: block; margin-bottom: 1rem; }
     header .titles { margin-bottom: 0.85rem; }
     /* Tabs get their own row; the two toggles share the next one. Stacking all
@@ -580,7 +617,10 @@
        would drag the whole sheet with it. Fold each projection under the
        count it belongs to instead. */
     #overlay-table th:nth-child(4), #overlay-table td:nth-child(4),
-    #overlay-table th:nth-child(6), #overlay-table td:nth-child(6) { display: none; }
+    #overlay-table th:nth-child(6), #overlay-table td:nth-child(6),
+    #overlay-table th:nth-child(8), #overlay-table td:nth-child(8) { display: none; }
+    #overlay-table.has-ind .th-full { display: none; }
+    #overlay-table.has-ind .th-short { display: inline; }
     #overlay-table th, #overlay-table td { padding: 0.34rem 0.3rem; }
     /* Long candidate names would otherwise push the "?" column off-screen. */
     #overlay-table thead th { white-space: normal; }
@@ -631,7 +671,7 @@
 
   <div class="card map-card">
     <p class="map-hint" id="map-hint"><span id="map-hint-click">Click a state to drill down to its counties.</span>
-      <span class="hint-long"><span class="hint-plain">Muted colour means that region is still counting.</span><span class="hint-cvd" style="display:none">Solid means that region is done counting, hatched means it is still counting.</span></span>
+      <span class="hint-long"><span class="hint-plain">Muted colour means that region is still counting.</span><span class="hint-cvd" style="display:none">Solid means that region is done counting, hatched means it is still counting.<span class="hint-ind" hidden> Independents (purple) use vertical stripes, or dots once certain.</span></span></span>
       <a class="sources-link" href="static/sources.html"><span class="hint-long">Method &amp; sources</span><span class="sources-short">Sources</span></a></p>
     <svg id="map" class="loading" viewBox="0 0 975 610" role="img" aria-label="Map of the United States coloured by projected winner"></svg>
     <div id="loading" role="status">Loading map data&hellip;</div>
@@ -640,11 +680,15 @@
       <span><i style="background:var(--no-data)"></i> no data yet</span>
       <span><i class="sw-no-race"></i> no race this cycle</span>
       <span><i class="sw-dem-faint"></i> Democrat leading</span>
-      <span><i class="sw-dem-projected"></i> Democrat projected >50%</span>
+      <span><i class="sw-dem-projected"></i> Democrat projected to win</span>
       <span><i style="background:var(--dem-certain)"></i> Officially Democrat</span>
       <span><i class="sw-rep-faint"></i> Republican leading</span>
-      <span><i class="sw-rep-projected"></i> Republican projected >50%</span>
+      <span><i class="sw-rep-projected"></i> Republican projected to win</span>
       <span><i style="background:var(--rep-certain)"></i> Officially Republican</span>
+      <span class="legend-ind legend-wide" id="legend-ind" hidden>
+        <i class="sw-ind-faint"></i><i class="sw-ind-projected"></i><i class="sw-ind-certain"></i>
+        Independent / other: leading, projected, official
+      </span>
       <span class="legend-wide"><i class="mismatch-swatch"></i> raw leader &ne; projected winner</span>
     </div>
   </div>
@@ -925,6 +969,7 @@ const NO_BASELINE_REASON = {
   redrawn: "This district was redrawn for 2026, so its 2024 result covers different territory.",
   noTwoParty: "This district's 2024 race did not have both a Democrat and a Republican on the ballot.",
   houseCounty: "No county-level House results exist to compare against (the House baseline is per district).",
+  independent: "A candidate who is neither Democrat nor Republican is a real contender in this race, so last cycle's two-party result no longer describes it.",
 };
 
 function describeBaseline(src, area, race) {
@@ -958,21 +1003,24 @@ function confidenceAreaText(area, race) {
 function explainArea(area, ctx) {
   const d = area.demReal, r = area.repReal, p = area.percentIn;
   const counted = d + r;
+  const i = area.indReal || 0;
+  const contender = area.indPredicted != null;   // present only in a race with a third candidate
   const steps = [];
   const step = (title, body) => steps.push(`<li><strong>${title}</strong><div>${body}</div></li>`);
 
-  step("Counted so far", `${+p.toFixed(1)}% in: ${numberFmt(d)} D, ${numberFmt(r)} R`
-    + (counted > 0 ? ` &rarr; Democratic share of the two-party count <code>${numberFmt(d)} ÷ ${numberFmt(counted)} = ${pctText(d / counted)}</code>` : ""));
+  step("Counted so far", `${+p.toFixed(1)}% in: ${numberFmt(d)} D, ${numberFmt(r)} R${contender ? `, ${numberFmt(i)} I` : ""}`
+    + (counted > 0 && !contender ? ` &rarr; Democratic share of the two-party count <code>${numberFmt(d)} ÷ ${numberFmt(counted)} = ${pctText(d / counted)}</code>` : ""));
 
   if (p >= 100) {
     step("Projection", "Fully counted, so the projection is the count itself.");
   } else if (area.usedFallback) {
-    const reason = ctx.houseCounty ? "houseCounty" : area.baseline?.reason;
+    const reason = ctx.houseCounty ? "houseCounty" : area.fallbackReason || area.baseline?.reason;
     step("No baseline", NO_BASELINE_REASON[reason] || NO_BASELINE_REASON.noBaseline);
     step("Projection", `The rest of the vote is assumed to split like what is counted so far: each side is scaled by `
       + `<code>100 ÷ ${+p.toFixed(1)} = ×${area.scale.toFixed(4)}</code><br>`
       + `D <code>${numberFmt(d)} × ${area.scale.toFixed(4)} = ${numberFmt(area.demPredicted)}</code><br>`
-      + `R <code>${numberFmt(r)} × ${area.scale.toFixed(4)} = ${numberFmt(area.repPredicted)}</code>`);
+      + `R <code>${numberFmt(r)} × ${area.scale.toFixed(4)} = ${numberFmt(area.repPredicted)}</code>`
+      + (contender ? `<br>I <code>${numberFmt(i)} × ${area.scale.toFixed(4)} = ${numberFmt(area.indPredicted)}</code>` : ""));
   } else {
     const h = area.historical.demShare;
     step("Baseline", `${describeBaseline(area.baseline, area, ctx.race)} &rarr; D <code>${pctText(h)}</code> of the two-party vote`);
@@ -999,13 +1047,20 @@ function explainTotals(agg, areas, ctx) {
   const reporting = areas.filter(a => !a.noData);
   const steps = [];
   const step = (title, body) => steps.push(`<li><strong>${title}</strong><div>${body}</div></li>`);
+  const ind = agg.independent;
   step("Projected total", `the sum of the ${reporting.length} reporting ${reporting.length === 1 ? "area" : "areas"}' projections (the Proj. columns)<br>`
-    + `D <code>${numberFmt(agg.demPredicted)}</code>, R <code>${numberFmt(agg.repPredicted)}</code>`);
-  const projected = agg.demPredicted + agg.repPredicted;
+    + `D <code>${numberFmt(agg.demPredicted)}</code>, R <code>${numberFmt(agg.repPredicted)}</code>`
+    + (ind ? `, I <code>${numberFmt(agg.indPredicted)}</code>` : ""));
+  if (ind) {
+    // Escaped: the name comes from NBC.
+    step("A third candidate", `${escapeHtml(independentLabel(ind))} holds <code>${pctText(ind.share)}</code> of the votes counted so far, `
+      + `so last cycle's two-party result no longer describes this race: every candidate's counted votes are scaled up by 100 ÷ the area's % in.`);
+  }
+  const projected = agg.demPredicted + agg.repPredicted + (agg.indPredicted || 0);
   let ballots;
   const t = agg.turnout;
   if (t) {
-    step("Turnout so far", `the reporting counties are projected at <code>${numberFmt(t.projected)}</code> two-party votes, against `
+    step("Turnout so far", `the reporting counties are projected at <code>${numberFmt(t.projected)}</code> ${ind ? "" : "two-party "}votes, against `
       + `<code>${numberFmt(t.historical)}</code> in ${t.kind === "share" ? "the 2024 presidential race" : "2024"} `
       + `(<code>&times;${t.ratio.toFixed(3)}</code>). That is only trusted once counties holding ${estimate.AREA_VOTE_TRUST_THRESHOLD * 100}% `
       + `of the state's ${t.kind === "share" ? "2024 presidential" : "2024"} vote have reported; they hold `
@@ -1018,22 +1073,33 @@ function explainTotals(agg, areas, ctx) {
       + `${pctText(t.historical / t.stateHistorical)} = ${numberFmt(byTurnout)}</code>), by that trust, kept within `
       + `&times;${estimate.TURNOUT_SCALE_MIN}&ndash;&times;${estimate.TURNOUT_SCALE_MAX} of the previous total and never below the projected total`;
   } else if (agg.ballotEstimateOverride != null) {
-    ballots = `the larger of the projected two-party total (<code>${numberFmt(projected)}</code>) and the previous `
+    ballots = `the larger of the projected ${ind ? "" : "two-party "}total (<code>${numberFmt(projected)}</code>) and the previous `
       + `election's two-party total (<code>${numberFmt(agg.ballotEstimateOverride)}</code>)`;
   } else if (agg.silentCount) {
     const scale = t ? t.scale : 1;
-    ballots = `the projected two-party total (<code>${numberFmt(projected)}</code>) plus the 2024 two-party turnout of `
+    ballots = `the projected ${ind ? "" : "two-party "}total (<code>${numberFmt(projected)}</code>) plus the 2024 two-party turnout of `
       + `the ${agg.silentCount} ${agg.silentCount === 1 ? "county" : "counties"} with nothing counted yet (<code>${numberFmt(agg.silentBallots)}</code>)`
       + (t ? `, scaled by the turnout so far (<code>1 + ${t.trust.toFixed(3)} × (${t.ratio.toFixed(3)} − 1) = &times;${scale.toFixed(3)}</code>, `
         + `kept within &times;${estimate.TURNOUT_SCALE_MIN}&ndash;&times;${estimate.TURNOUT_SCALE_MAX})` : "")
       + ` &mdash; used for the size of the race only, never for either side's projection`;
   } else {
-    ballots = `the projected two-party total`;
+    ballots = `the projected ${ind ? "" : "two-party "}total`;
   }
   step("Expected total ballots", `${ballots} = <code>${numberFmt(agg.ballotEstimate)}</code>`);
-  const half = agg.ballotEstimate / 2;
-  step("Call", `<em>certain</em> once a side's counted votes alone pass half of that (<code>${numberFmt(half)}</code>); `
-    + `<em>projected</em> once its projected votes do; otherwise no projected winner yet.`);
+  if (ind) {
+    // With three candidates a majority of the ballots is too strict (a 45/40/15
+    // race may never reach it), so a winner is called once the others cannot
+    // catch up. For two candidates this is the same rule as the one below.
+    const stillToCount = Math.max(agg.ballotEstimate - (agg.demReal + agg.repReal + agg.indReal), 0);
+    const notProjected = Math.max(agg.ballotEstimate - projected, 0);
+    step("Call", `a winner is called once nobody else can catch up: <em>certain</em> once the leader's counted lead over the runner-up `
+      + `is more than all the votes still to count (<code>${numberFmt(stillToCount)}</code>); <em>projected</em> once the lead in our `
+      + `projection is more than the ballots no projection covers (<code>${numberFmt(notProjected)}</code>); otherwise no projected winner yet.`);
+  } else {
+    const half = agg.ballotEstimate / 2;
+    step("Call", `<em>certain</em> once a side's counted votes alone pass half of that (<code>${numberFmt(half)}</code>); `
+      + `<em>projected</em> once its projected votes do; otherwise no projected winner yet.`);
+  }
   if (ctx.note) step("Note", ctx.note);
   return `<ol class="math">${steps.join("")}</ol>`;
 }
@@ -1245,6 +1311,11 @@ function buildRaceData(rows, race, historical, countyReference, meta) {
       repReal: +row["Republican Real"],
       demName: row["Democrat Name"] || "Democrat",
       repName: row["Republican Name"] || "Republican",
+      // Whether the CSV names a candidate for each party (the placeholder
+      // names above hide that), so a party with nobody running is not drawn as
+      // a row of zeros beside a third candidate.
+      demListed: Boolean(row["Democrat Name"]),
+      repListed: Boolean(row["Republican Name"]),
       stateName: row["State"],
       fips: row["FIPS"] || null,
       // One side with no candidate (e.g. an independent instead of a
@@ -1302,7 +1373,8 @@ function buildRaceData(rows, race, historical, countyReference, meta) {
     // Mismatch/certainty is still computed per STATE, aggregating every
     // populated county row in that state - see stateStatusFor.
     const agg = { totalExpected: 0, totalVotes: 0, demReal: 0, repReal: 0, demPredicted: 0, repPredicted: 0,
-                  indReal: 0, indPredicted: 0, independent, geography: "counties" };
+                  indReal: 0, indPredicted: 0, independent, geography: "counties",
+                  demListed: areas.some(a => a.demListed), repListed: areas.some(a => a.repListed) };
     for (const area of areas) {
       agg.totalVotes += area.totalVotes;
       agg.demReal += area.demReal;
@@ -1373,10 +1445,34 @@ function geographyLabel(status) {
 // The tie/unprojected/leader(/mismatch) tail shared byte-for-byte by
 // stateSummary and districtSummary - everything after they've each worked
 // out their own "ballots" figure (ballotTotalLabel vs. allCountiesKnown).
+// "Dan Osborn (Independent)", "Colt Shelby (Libertarian)", or just "Independent"
+// when the CSV did not carry a name.
+function independentLabel(independent) {
+  if (!independent || !independent.name) return "Independent";
+  const party = independent.party || "Independent";
+  // A name that is already the party ("Independent") is not repeated.
+  return party.toLowerCase() === independent.name.toLowerCase() ? independent.name : `${independent.name} (${party})`;
+}
+
+// A leader code as it reads in a sentence.
+function leaderLabel(code, independent) {
+  if (code === "D") return "Democrat";
+  if (code === "I") return independentLabel(independent);
+  return "Republican";
+}
+
+// One sentence on the third candidate, for tooltips and screen readers; "" when
+// the race has no contender, so a two-candidate race reads exactly as before.
+function independentNote(independent) {
+  return independent
+    ? `${independentLabel(independent)} holds ${(independent.share * 100).toFixed(1)}% of the votes counted so far.`
+    : "";
+}
+
 function summarizeStatus(status, ballots) {
   if (status.predictedLeader === "tie") return `${status.percentIn.toFixed(0)}% in, ${ballots} total ballots, tied`;
   if (status.call === "unprojected") return `${status.percentIn.toFixed(0)}% in, ${ballots} total ballots, no projected winner yet`;
-  const leaderName = status.predictedLeader === "D" ? "Democrat" : "Republican";
+  const leaderName = leaderLabel(status.predictedLeader, status.independent);
   return `${status.percentIn.toFixed(0)}% in, ${ballots} total ballots, ${status.call === "certain" ? "certain" : "projected"} ${leaderName}`
     + (status.mismatch ? " (raw leader currently disagrees)" : "");
 }
@@ -1810,6 +1906,14 @@ function start(topology, defaultRaceData) {
     return complete ? formatted : `~${formatted}`;
   }
 
+  // The one-line summary of a state or district and, where a third candidate is
+  // a real contender, who they are and how they are doing.
+  function unitSummary(d) {
+    const status = stateStatus(statusKeyOf(d));
+    const summary = stateSummary(weightKeyOf(d), status);
+    return status && status.independent ? `${summary}. ${independentNote(status.independent)}` : summary;
+  }
+
   function stateSummary(key, status) {
     if (!hasRace(key)) return `No ${RACE_META[current.race].label} race in ${RACE_META[current.race].year}`;
     if (current.redrawnHidden?.has(key)) {
@@ -1828,6 +1932,15 @@ function start(topology, defaultRaceData) {
   }
 
   // ---------- county rendering (used by the drill-down) ----------
+  // "x D / y R", plus "/ z I" in a race with a contender (indPredicted exists
+  // only then, so a two-candidate race reads exactly as it always did).
+  const hasInd = data => data.indPredicted != null;
+  const countedLine = data => `${numberFmt(data.demReal)} D / ${numberFmt(data.repReal)} R`
+    + (hasInd(data) ? ` / ${numberFmt(data.indReal || 0)} I` : "");
+  const projectedLine = data => `${numberFmt(data.demPredicted)} D / ${numberFmt(data.repPredicted)} R`
+    + (hasInd(data) ? ` / ${numberFmt(data.indPredicted)} I` : "");
+  const totalBallotsOf = data => data.demPredicted + data.repPredicted + (data.indPredicted || 0);
+
   function renderCounties(svgSelection, features, path, ns) {
     svgSelection.append("g")
       .selectAll("path")
@@ -1849,16 +1962,15 @@ function start(topology, defaultRaceData) {
           // path produced them (self-extrapolated from this county's own
           // percentIn, or the flat fallback) - both project the same two-party
           // total, only the D/R split differs. See estimate.js's expectedTotalVotes.
-          const totalBallots = data.demPredicted + data.repPredicted;
-          html += `${+data.percentIn.toFixed(1)}% in, ${numberFmt(totalBallots)} total ballots<br>`
-            + `Real: ${numberFmt(data.demReal)} D / ${numberFmt(data.repReal)} R<br>`;
+          html += `${+data.percentIn.toFixed(1)}% in, ${numberFmt(totalBallotsOf(data))} total ballots<br>`
+            + `Real: ${countedLine(data)}<br>`;
           if (data.usedFallback) {
-            html += `No baseline: ${NO_BASELINE_REASON[data.baseline?.reason] || NO_BASELINE_REASON.noBaseline} `
+            html += `No baseline: ${NO_BASELINE_REASON[data.fallbackReason || data.baseline?.reason] || NO_BASELINE_REASON.noBaseline} `
               + `The rest of the vote is assumed to split like the count so far.<br>`;
           } else if (data.historical) {
             html += describeEstimateBreakdown(data) + "<br>";
           }
-          html += `Predicted total: ${numberFmt(data.demPredicted)} D / ${numberFmt(data.repPredicted)} R`;
+          html += `Predicted total: ${projectedLine(data)}`;
         }
         showTooltip(event, html);
       })
@@ -1893,9 +2005,10 @@ function start(topology, defaultRaceData) {
       .attr("d", nationalPath)
       .attr("tabindex", d => (canOpen(d) ? 0 : null))
       .attr("role", d => (canOpen(d) ? "button" : null))
-      .attr("aria-label", d => `${labelOf(d)}: ${stateSummary(weightKeyOf(d), stateStatus(statusKeyOf(d)))}`)
+      .attr("aria-label", d => `${labelOf(d)}: ${unitSummary(d)}`)
       .on("mousemove", (event, d) => {
-        showTooltip(event, `<strong>${escapeHtml(labelOf(d))}</strong><br>${stateSummary(weightKeyOf(d), stateStatus(statusKeyOf(d)))}`);
+        // Escaped: it now carries candidate names, which come from NBC.
+        showTooltip(event, `<strong>${escapeHtml(labelOf(d))}</strong><br>${escapeHtml(unitSummary(d))}`);
       })
       .on("mouseleave", hideTooltip)
       .on("click", (event, d) => { if (canOpen(d)) openUnit(d); })
@@ -1929,7 +2042,7 @@ function start(topology, defaultRaceData) {
   // ---------- scoreboard ----------
   function renderScoreboard() {
     const meta = RACE_META[current.race];
-    const buckets = { demCertain: 0, demProjected: 0, repCertain: 0, repProjected: 0, undecided: 0 };
+    const buckets = { demCertain: 0, demProjected: 0, repCertain: 0, repProjected: 0, indCertain: 0, indProjected: 0, undecided: 0 };
 
     for (const [stateName, weight] of Object.entries(meta.weights)) {
       const status = stateStatus(normalize(stateName));
@@ -1939,12 +2052,14 @@ function start(topology, defaultRaceData) {
       if (!status || status.predictedLeader === "tie" || status.call === "unprojected") {
         buckets.undecided += weight; continue;
       }
-      buckets[(status.predictedLeader === "D" ? "dem" : "rep") + (status.call === "certain" ? "Certain" : "Projected")] += weight;
+      const side = { D: "dem", R: "rep", I: "ind" }[status.predictedLeader];
+      buckets[side + (status.call === "certain" ? "Certain" : "Projected")] += weight;
     }
 
     const demTotal = buckets.demCertain + buckets.demProjected;
     const repTotal = buckets.repCertain + buckets.repProjected;
-    const total = demTotal + repTotal + buckets.undecided;
+    const indTotal = buckets.indCertain + buckets.indProjected;
+    const total = demTotal + repTotal + indTotal + buckets.undecided;
     const pct = n => (total ? (n / total) * 100 : 0);
 
     d3.select("#scoreboard").html(`
@@ -1961,12 +2076,24 @@ function start(topology, defaultRaceData) {
       <div class="bar">
         <div style="width:${pct(buckets.demCertain)}%;background:var(--dem-certain)"></div>
         <div class="sw-dem-projected" style="width:${pct(buckets.demProjected)}%"></div>
+        <div class="sw-ind-certain" style="width:${pct(buckets.indCertain)}%"></div>
+        <div class="sw-ind-projected" style="width:${pct(buckets.indProjected)}%"></div>
         <div style="width:${pct(buckets.undecided)}%;background:var(--no-data)"></div>
         <div class="sw-rep-projected" style="width:${pct(buckets.repProjected)}%"></div>
         <div style="width:${pct(buckets.repCertain)}%;background:var(--rep-certain)"></div>
       </div>
-      <div class="win-note">${plural(buckets.undecided, meta.unit)} not yet decided &middot; ${meta.winNote}</div>
+      ${indTotal > 0 ? `<div class="ind-note" title="Independents are counted for neither party"><i class="sw-ind-certain"></i><span><strong style="color:var(--ind-certain)">Independent<span class="ind-other"> / other</span>: ${plural(indTotal, meta.unit)}</strong>
+        (${buckets.indCertain.toLocaleString()} certain &middot; ${buckets.indProjected.toLocaleString()} projected)<span class="ind-aside">, counted for neither party</span></span></div>` : ""}
+      <div class="win-note">${plural(buckets.undecided, meta.unit)} not yet decided &middot; ${meta.winNote}${indTotal > 0
+        ? `<span class="win-ind"> &middot; ${plural(indTotal, "independent")}</span>` : ""}</div>
     `);
+
+    // The legend's independent item, and the colour-blind hint's sentence about it,
+    // exist only while something on the map is actually drawn purple: a contender
+    // who is second everywhere leaves the map exactly as it was.
+    const anyPurple = [...current.stateAggregates.keys()].some(key => stateStatus(key)?.predictedLeader === "I");
+    d3.select("#legend-ind").attr("hidden", anyPurple ? null : "");
+    d3.select(".hint-ind").attr("hidden", anyPurple ? null : "");
   }
 
   // ---------- race tabs ----------
@@ -2073,12 +2200,22 @@ function start(topology, defaultRaceData) {
     const agg = status.agg;
     const sides = [
       { label: names.dem, now: agg.demReal, proj: agg.demPredicted,
-        solid: "var(--dem-certain)", tint: "var(--dem-projected)" },
+        solid: "var(--dem-certain)", tint: "var(--dem-projected)", unlisted: agg.demListed === false },
       { label: names.rep, now: agg.repReal, proj: agg.repPredicted,
-        solid: "var(--rep-certain)", tint: "var(--rep-projected)" },
+        solid: "var(--rep-certain)", tint: "var(--rep-projected)", unlisted: agg.repListed === false },
     ];
-    const nowTotal = agg.demReal + agg.repReal;
-    const projTotal = agg.demPredicted + agg.repPredicted;
+    // A third candidate in a real contest: show them, and do not draw a major
+    // party that has nobody running as a row of zeros ("Democrat 0 -> 0" used to
+    // read as a result in Nebraska).
+    if (agg.independent) {
+      sides.push({ label: names.ind || independentLabel(agg.independent), now: agg.indReal, proj: agg.indPredicted,
+                   // Not --ind-projected: in colour-blind mode that is a very pale lavender, which
+                   // as the colour of the projected NUMBER nearly vanishes on white.
+                   solid: "var(--ind-certain)", tint: "color-mix(in srgb, var(--ind-certain) 58%, var(--card-bg))" });
+    }
+    const drawn = agg.independent ? sides.filter(side => !side.unlisted) : sides;
+    const nowTotal = agg.demReal + agg.repReal + (agg.indReal || 0);
+    const projTotal = agg.demPredicted + agg.repPredicted + (agg.indPredicted || 0);
     // Scale the bar WIDTH against the full ballot estimate (which can lean
     // on historical data for counties with nothing counted yet - see
     // buildRaceData), not the reporting-only projTotal used for the D/R
@@ -2090,7 +2227,7 @@ function start(topology, defaultRaceData) {
     // point so the gap has a fixed reference, not just an unlabelled blank.
     const scale = Math.max(agg.ballotEstimate, 1);
 
-    box.html(sides.map(side => {
+    box.html(drawn.map(side => {
       const barWidth = pct(side.proj, scale);
       const countedShare = pct(side.now, side.proj || 1);
       return `
@@ -2129,27 +2266,44 @@ function start(topology, defaultRaceData) {
       ? geographyLabel(status)
       : "counties";
     const reportingCount = areas.filter(area => !area.noData).length;
+    // Two more columns (the third candidate's count and projection) only in a
+    // race that has one, so every other table is unchanged.
+    const independent = ctx && ctx.independent;
+    // One column pair (count, projection) per candidate drawn. A major party with
+    // nobody running is left out beside a third candidate, as in the summary.
+    const parties = [
+      { key: "dem", name: names.dem, now: "demReal", proj: "demPredicted" },
+      { key: "rep", name: names.rep, now: "repReal", proj: "repPredicted" },
+    ];
+    if (independent) {
+      parties.push({ key: "ind", name: names.ind || independentLabel(independent), now: "indReal", proj: "indPredicted" });
+    }
+    const drawn = independent ? parties.filter(p => !(ctx.unlisted && ctx.unlisted[p.key])) : parties;
+    const cells = area => drawn.map(p => `
+        <td class="${p.key}-now">${numberFmt(area[p.now] || 0)}<span class="proj-inline">${numberFmt(area[p.proj] || 0)}</span></td>
+        <td class="proj">${numberFmt(area[p.proj] || 0)}</td>`).join("");
+    // With a third candidate the headers fold to a coloured D / R / I on a phone,
+    // where six columns of full names cannot fit (the summary rows carry the
+    // names); the full name stays as the accessible label.
+    const head = p => (independent
+      ? `<th scope="col" class="party-${p.key}" aria-label="${escapeHtml(p.name)}"><span class="th-full">${escapeHtml(p.name)}</span>`
+        + `<span class="th-short" aria-hidden="true">${{ dem: "D", rep: "R", ind: "I" }[p.key]}</span></th>`
+      : `<th scope="col">${escapeHtml(p.name)}</th>`);
     const rows = areas.map((area, i) => (area.noData ? `
       <tr>
         <td>${escapeHtml(area.name)}</td>
-        <td colspan="6" class="proj">No data yet</td>
+        <td colspan="${2 + 2 * drawn.length}" class="proj">No data yet</td>
       </tr>` : `
       <tr class="explainable" data-i="${i}">
         <td>${escapeHtml(area.name)}</td>
-        <td>${(+area.percentIn.toFixed(1))}%</td>
-        <td class="dem-now">${numberFmt(area.demReal)}<span class="proj-inline">${numberFmt(area.demPredicted)}</span></td>
-        <td class="proj">${numberFmt(area.demPredicted)}</td>
-        <td class="rep-now">${numberFmt(area.repReal)}<span class="proj-inline">${numberFmt(area.repPredicted)}</span></td>
-        <td class="proj">${numberFmt(area.repPredicted)}</td>
+        <td>${(+area.percentIn.toFixed(1))}%</td>${cells(area)}
         <td class="why"><button type="button" class="why" aria-label="How ${escapeHtml(area.name)}'s projection is computed">?</button></td>
       </tr>`)).join("");
 
-    d3.select("#overlay-table").html(`
+    d3.select("#overlay-table").classed("has-ind", Boolean(independent)).html(`
       <caption>${reportingCount} of ${areas.length} ${unit} reporting &middot; counted, then projected to full reporting &middot; ? shows the working</caption>
       <thead><tr>
-        <th scope="col">Area</th><th scope="col">In</th>
-        <th scope="col">${escapeHtml(names.dem)}</th><th scope="col">Proj.</th>
-        <th scope="col">${escapeHtml(names.rep)}</th><th scope="col">Proj.</th>
+        <th scope="col">Area</th><th scope="col">In</th>${drawn.map(p => `${head(p)}<th scope="col">Proj.</th>`).join("")}
         <th scope="col"><span class="visually-hidden">How it is computed</span></th>
       </tr></thead>
       <tbody>${rows}</tbody>`);
@@ -2171,11 +2325,12 @@ function start(topology, defaultRaceData) {
 
     const stateKey = normalize(stateName);
     const anyArea = (current.areasByState.get(stateKey) || [])[0];
+    const status = stateStatus(stateKey);
     const names = {
       dem: anyArea ? anyArea.demName : "Democrat",
       rep: anyArea ? anyArea.repName : "Republican",
+      ind: status && status.independent ? status.independent.name || "Independent" : "",
     };
-    const status = stateStatus(stateKey);
     const reportingForTotal = current.areasByState.get(stateKey) || [];
     renderOverlaySummary(status, names, () => explainTotals(status.agg, reportingForTotal, {}));
     // The map already shows every county of the state, reporting or not
@@ -2190,11 +2345,15 @@ function start(topology, defaultRaceData) {
       : reportingAreas.concat(countiesInState
           .filter(c => !knownFips.has(c.id))
           .map(c => ({ name: c.properties.name, noData: true })));
-    renderOverlayTable(tableAreas, status, names, { race: current.race });
+    renderOverlayTable(tableAreas, status, names, {
+      race: current.race, independent: status ? status.independent : null,
+      unlisted: status ? { dem: status.agg.demListed === false, rep: status.agg.repListed === false } : null,
+    });
     const note = status && !status.countyLevel
       ? `${stateSummary(stateName, status)} — this state reports by `
         + `${geographyLabel(status)} rather than by county, so there is no county breakdown.`
-      : stateSummary(stateName, status);
+        + (status.independent ? ` ${independentNote(status.independent)}` : "")
+      : stateSummary(stateName, status) + (status && status.independent ? `. ${independentNote(status.independent)}` : "");
     d3.select("#overlay-title").text(stateName);
     d3.select("#overlay-note").text(note);
     stateSvg.attr("aria-label", `${stateName} counties: ${note}`);
@@ -2234,7 +2393,8 @@ function start(topology, defaultRaceData) {
 
   function districtSummary(status) {
     if (!status) return "No data yet";
-    return summarizeStatus(status, `${(status.agg.ballotEstimate / 1e6).toFixed(2)}M`);
+    return summarizeStatus(status, `${(status.agg.ballotEstimate / 1e6).toFixed(2)}M`)
+      + (status.independent ? `. ${independentNote(status.independent)}` : "");
   }
 
   // A district drill-down's counties are keyed by a Map built fresh from the
@@ -2255,11 +2415,10 @@ function start(topology, defaultRaceData) {
         if (!data) {
           html += "No data yet";
         } else {
-          const totalBallots = data.demPredicted + data.repPredicted;
-          html += `${+data.percentIn.toFixed(1)}% in, ${numberFmt(totalBallots)} total ballots<br>`
-            + `Real: ${numberFmt(data.demReal)} D / ${numberFmt(data.repReal)} R<br>`
+          html += `${+data.percentIn.toFixed(1)}% in, ${numberFmt(totalBallotsOf(data))} total ballots<br>`
+            + `Real: ${countedLine(data)}<br>`
             + `No county-level historical baseline for House &mdash; using live-only estimate<br>`
-            + `Predicted: ${numberFmt(data.demPredicted)} D / ${numberFmt(data.repPredicted)} R`;
+            + `Predicted: ${projectedLine(data)}`;
         }
         showTooltip(event, html);
       })
@@ -2272,7 +2431,22 @@ function start(topology, defaultRaceData) {
   // fetching again).
   function renderDistrictOverlay(feature, payload) {
     const label = payload.label || labelOf(feature);
-    const names = { dem: payload.demName || "Democrat", rep: payload.repName || "Republican" };
+
+    // Whether this district has a real third contender. The national results
+    // already decided that (the same rule, on the whole district), so the
+    // drill-down agrees with the map; a district they do not list yet is decided
+    // from its own counties.
+    const rawInd = payload.areas.reduce((n, a) => n + (a.indReal || 0), 0);
+    const rawVotes = payload.areas.reduce((n, a) => n + (a.votes || 0), 0);
+    const districtStatus = stateStatus(feature.id);
+    const contender = districtStatus ? Boolean(districtStatus.independent) : estimate.independentIsMaterial(rawInd, rawVotes);
+    const independent = !contender ? null : (districtStatus && districtStatus.independent) || {
+      name: payload.indName || "", party: payload.indParty || "", share: rawVotes ? rawInd / rawVotes : 0,
+    };
+    const names = {
+      dem: payload.demName || "Democrat", rep: payload.repName || "Republican",
+      ind: independent ? independent.name || "Independent" : "",
+    };
 
     // The server hands back real counts only (see server.py's
     // _house_district_payload) - estimate.js projects them the same way it
@@ -2284,8 +2458,10 @@ function start(topology, defaultRaceData) {
       // historical entry, estimateArea always takes the flat-fallback
       // branch, which doesn't look at it.
       ...estimate.estimateArea(
-        { demReal: a.demReal, repReal: a.repReal, percentIn: a.percentIn, totalVotes: a.votes },
+        { demReal: a.demReal, repReal: a.repReal, percentIn: a.percentIn, totalVotes: a.votes,
+          indReal: contender ? a.indReal || 0 : 0, independentRace: contender },
         undefined, 1),
+      indReal: contender ? a.indReal || 0 : 0,
     }));
 
     // How this district reports - the same two fields stateStatusFor derives.
@@ -2301,7 +2477,8 @@ function start(topology, defaultRaceData) {
         totalExpected: payload.totalExpected, totalVotes: countySum(a => a.votes),
         demReal: countySum(a => a.demReal), repReal: countySum(a => a.repReal),
         demPredicted: countySum(a => a.demPredicted), repPredicted: countySum(a => a.repPredicted),
-        ballotEstimate: countySum(a => a.demPredicted) + countySum(a => a.repPredicted),
+        indReal: countySum(a => a.indReal), indPredicted: countySum(a => a.indPredicted), independent,
+        ballotEstimate: countySum(a => a.demPredicted) + countySum(a => a.repPredicted) + countySum(a => a.indPredicted),
         geography, silentCount: 0,
       }]]),
     }, feature.id) : null;
@@ -2310,7 +2487,6 @@ function start(topology, defaultRaceData) {
     // shows, made against the district's 2024 result. The county rows below
     // are each projected on their own, with no baseline (there is no
     // county-level House history), so they need not add up to exactly this.
-    const districtStatus = stateStatus(feature.id);
     const districtArea = (current.areasByState.get(feature.id) || [])[0];
     const status = districtStatus || countySumStatus;
     renderOverlaySummary(status, names, districtStatus && districtArea
@@ -2319,7 +2495,10 @@ function start(topology, defaultRaceData) {
         + `(there are no county-level House results to compare against), so they need not add up to exactly this total.</p>`
       : () => explainTotals(countySumStatus.agg, areas, { note: "The national results don't list this district yet, "
         + "so this total is its counties added up." }));
-    renderOverlayTable(areas, countyStatus, names, { race: current.race, houseCounty: true });
+    renderOverlayTable(areas, countyStatus, names, {
+      race: current.race, houseCounty: true, independent,
+      unlisted: districtStatus ? { dem: districtStatus.agg.demListed === false, rep: districtStatus.agg.repListed === false } : null,
+    });
 
     const note = countyStatus && !countyStatus.countyLevel
       ? `${districtSummary(status)} — this district reports by `
@@ -2345,6 +2524,8 @@ function start(topology, defaultRaceData) {
     const dataByKey = new Map(areas.filter(a => a.fips && !a.noData).map(a => [a.fips, {
       percentIn: a.percentIn, demReal: a.demReal, repReal: a.repReal,
       demPredicted: a.demPredicted, repPredicted: a.repPredicted,
+      // Only in a district with a contender, so the tooltip and fill treat it as three-way.
+      ...(a.indPredicted != null ? { indReal: a.indReal, indPredicted: a.indPredicted } : {}),
     }]));
 
     const path = d3.geoPath();

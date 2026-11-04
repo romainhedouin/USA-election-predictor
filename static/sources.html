@@ -52,7 +52,7 @@
   <a class="back" href="../map.html">&larr; Back to the map</a>
   <h1>Method &amp; data sources</h1>
   <p class="lede">Where every number on the map comes from, and how the projections are made. Last reviewed
-    November 3, 2026. This project is independent and not affiliated with any of the sources below.</p>
+    November 4, 2026. This project is independent and not affiliated with any of the sources below.</p>
 
   <section>
     <h2>How a projection is made</h2>
@@ -60,6 +60,13 @@
       same place voted last time. The difference is a <em>swing</em>, trusted more as more of the vote is in,
       and applied to the vote still to count. Where there is no usable earlier result, the rest of the vote is
       assumed to split like the vote counted so far. A state's projection is the sum of its counties'.</p>
+    <p><strong>Independents.</strong> Each race also carries the strongest candidate who is neither a Democrat nor
+      a Republican, whatever NBC labels them (its labels are not consistent enough to pick independents by), and
+      draws them in purple. Once they hold at least 5% of the votes counted in the race, and at least 1,000, the
+      earlier result's two-party split no longer describes the race, so every candidate is projected from the
+      count so far, the expected total includes their ballots, and a winner is called when nobody else can catch
+      up (a plurality) rather than at 50%. Below that line they are ignored. Ranked-choice contests (Maine,
+      Alaska) are not modelled.</p>
     <p>In any state or district drill-down, the <strong>?</strong> next to each row shows the exact working for
       that projection with the real numbers, and "How this total is computed" does the same for the total. The
       math itself is in

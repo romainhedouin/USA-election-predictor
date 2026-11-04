@@ -19,6 +19,20 @@ count into a projection for its full count, one of two ways:
   vote splits like the vote counted so far: `Predicted = Real × 100 /
   PercentIn`.
 
+**A third candidate.** Every race carries one candidate who is neither
+Democrat nor Republican: whoever polls best among them, whatever NBC labels
+them (an independent, a Libertarian, "no party preference"; NBC's labels are
+too inconsistent to pick independents by, and write-in lines are never chosen).
+Once that candidate holds at least 5% of the votes counted in the race, and at
+least 1,000 votes, they are a contender: the race is projected flat for all three
+candidates, because last cycle's two-party result no longer describes it, the
+expected total includes their ballots, and the map draws them **purple**. Below
+that line they are ignored and every number is exactly what it would be without
+them. In a three-way race a winner is called by plurality (the leader's lead
+over the runner-up must exceed every vote still to be counted) instead of a
+majority; with two candidates that is the same rule as before. Ranked-choice
+voting (Maine, Alaska) is not modelled.
+
 A county's raw leader and its own projection can differ; the map outlines any
 state or district where the projected winner disagrees with whoever's
 currently "leading" on raw votes. In a drill-down, the **?** next to each row
@@ -37,8 +51,8 @@ once per cycle. What each race is compared against:
 | Governor | none yet: vote totals but no party split, so the plain extrapolation |
 
 Areas with no baseline (a town rather than a county, a one-party race, a
-redrawn district) use the plain extrapolation, and the **?** says which reason
-applies. See that script's docstring for the exact sourcing and known gaps.
+redrawn district, a race with a strong third candidate) use the plain
+extrapolation, and the **?** says which reason applies. See that script's docstring for the exact sourcing and known gaps.
 
 Nine states use new House maps in 2026 (Alabama, California, Florida,
 Louisiana, North Carolina, Ohio, Tennessee, Texas, Utah). The district map uses
@@ -93,6 +107,10 @@ Governor / House tabs; click a state (or House district) to drill into
 counties. Solid fill means a region's count is effectively done, hatching
 means it's still counting, grey means no data yet, and a dashed outline marks
 a state/district where the raw leader disagrees with the projected winner.
+Purple marks an independent (or other non-major) candidate who is a real
+contender; in colour-blind mode they are also drawn with vertical stripes
+(projected) or dots (certain), because no purple can be told from blue by hue
+alone under red-green colour blindness.
 
 ## Layout
 

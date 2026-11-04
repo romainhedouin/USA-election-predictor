@@ -414,6 +414,7 @@ county topology come from jsDelivr, not Railway):
 | President CSV + historical baseline | ~93 kB + ~39 kB |
 | Senate / Governor CSV + baseline | ~2 kB each |
 | House CSV + baseline + district topology (House tab only) | ~3 kB + ~3 kB + ~64 kB |
+| Senate / Governor CSV once every county has reported (election night) | ~70 kB each (60 kB before the three Independent columns were added) |
 | 60 s poll, data unchanged (two 304s) | ~1 kB |
 | 60 s poll, data changed | the active race's CSV, up to ~93 kB |
 
