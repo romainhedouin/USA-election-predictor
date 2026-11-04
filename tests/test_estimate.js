@@ -21,6 +21,11 @@ const {
   stateBallotEstimate,
   TURNOUT_SCALE_MIN,
   TURNOUT_SCALE_MAX,
+  INDEPENDENT_MIN_SHARE,
+  INDEPENDENT_MIN_VOTES,
+  independentIsMaterial,
+  leaderOf,
+  callOf,
 } = require("../estimate.js");
 
 test("confidenceWeight is 0 with nothing counted", () => {
@@ -304,4 +309,210 @@ test("non-finite and non-positive inputs never produce NaN", () => {
   assert.equal(stateBallotEstimate(360000, 0, null), 0);
   const basis = turnoutBasis(reporting(["1", "2", "3"], 120000), FOUR_COUNTIES);
   assert.equal(stateBallotEstimate(360000, 0, basis), 0);
+});
+
+// ---- a third candidate (independent / other) ----
+
+// The rules map.html had before a third candidate existed, copied verbatim from
+// the commit before this change. They are the oracle: with no third candidate the
+// new functions must agree with them on EVERY input, not just the obvious ones.
+function oldLeaderOf(dem, rep) {
+  if (dem > rep) return "D";
+  if (rep > dem) return "R";
+  return "tie";
+}
+function oldCallOf(demReal, repReal, demPredicted, repPredicted, ballotEstimate) {
+  const half = ballotEstimate / 2;
+  if (Math.max(demReal, repReal) > half) return "certain";
+  if (Math.max(demPredicted, repPredicted) > half) return "projected";
+  return "unprojected";
+}
+
+// Small, deterministic generator so a failure reproduces (mulberry32).
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+test("leaderOf is the old two-way rule for any input when there is no third candidate", () => {
+  const rand = rng(1);
+  for (let i = 0; i < 20000; i++) {
+    // Small integers make exact ties common, which is where rules disagree.
+    const d = Math.floor(rand() * 6), r = Math.floor(rand() * 6);
+    assert.equal(leaderOf(d, r), oldLeaderOf(d, r), `${d} ${r}`);
+    assert.equal(leaderOf(d, r, 0), oldLeaderOf(d, r));
+    assert.equal(leaderOf(d, r, undefined), oldLeaderOf(d, r));
+    assert.equal(leaderOf(d, r, NaN), oldLeaderOf(d, r));
+  }
+});
+
+test("callOf is the old rule for any input when there is no third candidate", () => {
+  const rand = rng(2);
+  for (let i = 0; i < 50000; i++) {
+    const n = () => Math.floor(rand() * 40);
+    const [dr, rr, dp, rp] = [n(), n(), n(), n()];
+    // Includes ballotEstimate BELOW the projected total (the old rule never
+    // guarded against it) and exact-half ties.
+    const T = Math.floor(rand() * 90);
+    assert.equal(callOf(dr, rr, dp, rp, T), oldCallOf(dr, rr, dp, rp, T), `${dr} ${rr} ${dp} ${rp} ${T}`);
+    assert.equal(callOf(dr, rr, dp, rp, T, 0, 0), oldCallOf(dr, rr, dp, rp, T));
+  }
+});
+
+test("the plurality lock is the old majority rule whenever there are only two candidates", () => {
+  // The claim behind the three-way rule: leader - second > T - (leader + second)
+  // is the same inequality as leader > T / 2. Integers keep the arithmetic exact.
+  const rand = rng(3);
+  const plurality = (a, b, cnt, T) => (Math.abs(a - b) > Math.max(T - (a + b), 0) ? true : false) && cnt;
+  for (let i = 0; i < 50000; i++) {
+    const a = Math.floor(rand() * 50), b = Math.floor(rand() * 50);
+    const T = a + b + Math.floor(rand() * 50);                  // the expected total can't be below what is counted
+    const lockedOld = Math.max(a, b) > T / 2;
+    const lockedNew = Math.abs(a - b) > T - (a + b);
+    assert.equal(lockedNew, lockedOld, `${a} ${b} ${T}`);
+  }
+});
+
+test("independentIsMaterial needs both 5% of the count and 1,000 votes", () => {
+  assert.equal(INDEPENDENT_MIN_SHARE, 0.05);
+  assert.equal(INDEPENDENT_MIN_VOTES, 1000);
+  assert.equal(independentIsMaterial(50000, 1000000), true);       // exactly 5% counts
+  assert.equal(independentIsMaterial(49999, 1000000), false);      // just under
+  assert.equal(independentIsMaterial(1000, 20000), true);          // exactly 1,000 votes, exactly 5%
+  assert.equal(independentIsMaterial(999, 10000), false);          // under the vote floor even at 9.99%
+  assert.equal(independentIsMaterial(999, 1000), false);           // 99.9% of a tiny count is still tiny
+  assert.equal(independentIsMaterial(0, 1000000), false);
+  assert.equal(independentIsMaterial(5000, 0), false);             // nothing counted: no NaN, no division by zero
+  assert.equal(independentIsMaterial(undefined, 100), false);
+  assert.equal(independentIsMaterial(NaN, 100), false);
+});
+
+test("leaderOf with a third candidate: three-way leader, and a tie for first is a tie", () => {
+  assert.equal(leaderOf(30, 40, 50), "I");
+  assert.equal(leaderOf(30, 50, 40), "R");
+  assert.equal(leaderOf(50, 30, 40), "D");
+  assert.equal(leaderOf(50, 50, 10), "tie");     // D and R level at the top
+  assert.equal(leaderOf(10, 50, 50), "tie");     // R and I level at the top
+  assert.equal(leaderOf(40, 10, 40), "tie");
+  assert.equal(leaderOf(10, 10, 50), "I");       // a tie for LAST changes nothing
+  assert.equal(leaderOf(0, 40, 30), "R");        // the Democrat did not run
+  assert.equal(leaderOf(0, 0, 5), "I");
+});
+
+test("a three-way race can be called without anyone reaching 50%", () => {
+  // 45 / 40 / 15 of 1,000 expected ballots, all counted: the old rule would say
+  // "unprojected" forever; the leader is plainly the winner.
+  assert.equal(oldCallOf(450, 400, 450, 400, 1000), "unprojected");
+  assert.equal(callOf(450, 400, 450, 400, 1000, 150, 150), "certain");
+  // With 200 ballots still out a 50-vote lead can still flip, so it is not locked.
+  assert.equal(callOf(450, 400, 450, 400, 1200, 150, 150), "unprojected");
+});
+
+test("plurality lock: certain only when the lead beats every vote still to count", () => {
+  // Counted D 450, R 400, I 150 = 1000; expected 1100 => 100 still out. Lead over the runner-up is 50.
+  assert.equal(callOf(450, 400, 450, 400, 1100, 150, 150), "unprojected");   // 50 < 100 out, and the projection is no clearer
+  // 120 out instead of 100 does not help the leader; 30 out does.
+  assert.equal(callOf(450, 400, 450, 400, 1030, 150, 150), "certain");       // lead 50 > 30 out
+  // A lead of exactly the votes still out is NOT locked (the runner-up could tie).
+  assert.equal(callOf(450, 400, 450, 400, 1050, 150, 150), "unprojected");   // 50 = 50 out
+});
+
+test("projected: the projected lead must exceed the ballots nobody's projection covers", () => {
+  // Counted votes alone do not lock it (lead 50 < 400 still to count) ...
+  // ... but each side's projection (D 600, R 300, I 100) leads by 300 and only 50 ballots
+  // (silent counties) are unprojected: projected, not certain.
+  assert.equal(callOf(300, 250, 600, 300, 1050, 100, 100), "projected");
+  // The same projection with 400 ballots in counties nobody projected is not yet a call.
+  assert.equal(callOf(300, 250, 600, 300, 1400, 100, 100), "unprojected");
+});
+
+test("a three-way tie for first is never called", () => {
+  assert.equal(callOf(100, 100, 100, 100, 300, 100, 100), "unprojected");
+  assert.equal(callOf(100, 100, 150, 150, 450, 90, 150), "unprojected");     // projected D = R at the top
+});
+
+test("the Democrat absent (Nebraska-like): Republican against an independent", () => {
+  // Counted R 360, I 313 (673) at ~87% in, so ~774 expected ballots and 101 still to come.
+  // The 47-vote lead is not locked ...
+  // ... but the projection (R 414, I 360 = 774) covers every expected ballot and R leads it by 54: projected.
+  assert.equal(callOf(0, 360, 0, 414, 774, 313, 360), "projected");
+  // Fully counted, R ahead: certain.
+  assert.equal(callOf(0, 400, 0, 400, 713, 313, 313), "certain");
+  // The independent ahead in the projection is called for the independent's side the same way.
+  assert.equal(callOf(0, 300, 0, 330, 774, 373, 444), "projected");
+  assert.equal(leaderOf(0, 330, 444), "I");
+});
+
+test("estimateArea with a third candidate projects all three blocs flat and ignores the baseline", () => {
+  const area = { demReal: 100, repReal: 300, indReal: 200, percentIn: 50, totalVotes: 650 };
+  const baseline = { demShare: 0.45, repShare: 0.55, votes: 2000, year: 2020 };
+  const out = estimateArea(area, baseline, 1);
+  assert.equal(out.demPredicted, 200);
+  assert.equal(out.repPredicted, 600);
+  assert.equal(out.indPredicted, 400);
+  assert.equal(out.usedFallback, true);
+  assert.equal(out.fallbackReason, "independent");
+  assert.equal(out.scale, 2);
+  // The three projected blocs add up to what the whole count would be at 100%.
+  assert.equal(out.demPredicted + out.repPredicted + out.indPredicted, (100 + 300 + 200) * 100 / 50);
+  // And the baseline-based swing result is exactly what the old call returns, so this really is a choice.
+  const without = estimateArea({ ...area, indReal: 0 }, baseline, 1);
+  assert.equal(without.usedFallback, false);
+  assert.ok(without.historical);
+});
+
+test("estimateArea is unchanged for a race with no third candidate, key for key", () => {
+  const base = { demReal: 100, repReal: 300, percentIn: 50, totalVotes: 410 };
+  const baseline = { demShare: 0.45, repShare: 0.55, votes: 2000, year: 2020 };
+  for (const entry of [baseline, null, undefined]) {
+    const plain = estimateArea(base, entry, 0.6);
+    for (const absent of [{}, { indReal: 0 }, { indReal: undefined }, { indReal: NaN }, { indReal: -5 }]) {
+      assert.deepEqual(estimateArea({ ...base, ...absent }, entry, 0.6), plain);
+    }
+    assert.ok(!("indPredicted" in plain) && !("fallbackReason" in plain));
+  }
+  assert.deepEqual(estimateArea({ ...base, percentIn: 100 }, baseline, 1),
+    { demPredicted: 100, repPredicted: 300, noData: false, usedFallback: false });
+  assert.deepEqual(estimateArea({ ...base, percentIn: 0 }, baseline, 1),
+    { demPredicted: null, repPredicted: null, noData: true, usedFallback: false });
+});
+
+test("a fully counted area and a no-data area with a third candidate", () => {
+  const done = estimateArea({ demReal: 5, repReal: 6, indReal: 7, percentIn: 100, totalVotes: 20 }, null, 1);
+  assert.deepEqual(done, { demPredicted: 5, repPredicted: 6, noData: false, usedFallback: false, indPredicted: 7 });
+  const none = estimateArea({ demReal: 0, repReal: 0, indReal: 7, percentIn: 0, totalVotes: 0 }, null, 1);
+  assert.equal(none.noData, true);
+  assert.ok(!("indPredicted" in none));
+});
+
+test("turnoutBasis counts the third candidate's ballots, so a strong independent is not a turnout collapse", () => {
+  const entries = [["1", { votes: 100000 }], ["2", { votes: 100000 }]];
+  const areas = [{ fips: "1", demPredicted: 30000, repPredicted: 30000, indPredicted: 40000 }];
+  const basis = turnoutBasis(areas, entries);
+  assert.equal(basis.projected, 100000);
+  assert.equal(basis.ratio, 1);                       // not 0.6
+  const twoParty = turnoutBasis([{ fips: "1", demPredicted: 30000, repPredicted: 30000 }], entries);
+  assert.equal(twoParty.ratio, 0.6);                  // unchanged for a race without one
+});
+
+test("the model is chosen by the RACE: a county where the third candidate has no votes is still flat", () => {
+  const baseline = { demShare: 0.45, repShare: 0.55, votes: 2000, year: 2020 };
+  const county = { demReal: 100, repReal: 300, indReal: 0, independentRace: true, percentIn: 50, totalVotes: 400 };
+  const out = estimateArea(county, baseline, 1);
+  assert.equal(out.usedFallback, true);
+  assert.equal(out.fallbackReason, "independent");
+  assert.equal(out.indPredicted, 0);
+  assert.equal(out.demPredicted, 200);                    // flat, not the swing model
+  assert.equal(estimateArea({ ...county, percentIn: 100 }, baseline, 1).indPredicted, 0);
+  // ... and a race without a contender is untouched by the flag being false or absent.
+  for (const flag of [false, undefined]) {
+    assert.deepEqual(estimateArea({ ...county, independentRace: flag }, baseline, 1),
+      estimateArea({ demReal: 100, repReal: 300, percentIn: 50, totalVotes: 400 }, baseline, 1));
+  }
 });

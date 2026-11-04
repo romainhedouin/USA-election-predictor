@@ -24,6 +24,17 @@
  *
  * At 0% counted, neither model applies - there is nothing to extrapolate
  * from, so estimateArea returns predictions of null rather than guessing.
+ *
+ * A THIRD CANDIDATE (an independent, or whoever else polls best besides the
+ * Democrat and Republican) is a separate bloc, `indReal`. Both models above are
+ * Democrat-versus-Republican models: the baseline is last cycle's two-party
+ * split, and the swing is the counted two-party share against it. Once a third
+ * candidate is a real contender (independentIsMaterial) that split no longer
+ * describes the race, so all three blocs are projected flat: each candidate's
+ * counted votes x 100 / percentIn. Below that threshold the third candidate is
+ * ignored entirely and every number is exactly what it was before they existed.
+ * leaderOf and callOf are three-way versions of the rules map.html always had,
+ * and are identical to them when there is no third candidate.
  */
 
 // Full trust in the observed swing once this fraction of the state's votes
@@ -44,8 +55,72 @@ const AREA_VOTE_TRUST_THRESHOLD = 0.3;
 const TURNOUT_SCALE_MIN = 0.5;
 const TURNOUT_SCALE_MAX = 2;
 
+// A third candidate counts as a real contender once they hold this share of
+// the votes counted so far in the race (statewide, or the district), and at
+// least this many votes. Below that they are ignored: their votes stay inside
+// NBC's all-candidate total only, as they always did. The vote floor stops a
+// handful of early ballots from switching a race between two models.
+const INDEPENDENT_MIN_SHARE = 0.05;
+const INDEPENDENT_MIN_VOTES = 1000;
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+// totalVotes is NBC's all-candidate count, so the share is the same 43.7%
+// that NBC prints, not a share of the three blocs.
+function independentIsMaterial(independentVotes, totalVotes) {
+  return independentVotes >= INDEPENDENT_MIN_VOTES
+    && totalVotes > 0
+    && independentVotes / totalVotes >= INDEPENDENT_MIN_SHARE;
+}
+
+// Who is ahead. Exactly the old two-way rule unless a third candidate has
+// votes; a tie for first (including between the other two) is "tie".
+function leaderOf(dem, rep, ind = 0) {
+  if (!(ind > 0)) {
+    if (dem > rep) return "D";
+    if (rep > dem) return "R";
+    return "tie";
+  }
+  const top = Math.max(dem, rep, ind);
+  const leaders = [dem === top && "D", rep === top && "R", ind === top && "I"].filter(Boolean);
+  return leaders.length === 1 ? leaders[0] : "tie";
+}
+
+// How far the best of three is ahead of the second best.
+function leadOver(a, b, c) {
+  const [top, second] = [a, b, c].sort((x, y) => y - x);
+  return top - second;
+}
+
+// Three-way call, not a boolean "certain": how much of the race is settled.
+//   "certain":     decided no matter what is still to come.
+//   "projected":   not yet decided, but our own projection has one candidate
+//                  clear of the field.
+//   "unprojected": too little to call.
+// With two candidates the test is the one map.html always used - a side's
+// votes against half of the expected ballots - kept verbatim. With a third, a
+// majority of the ballots is too strict (a 45/40/15 race may never reach it),
+// so the test becomes a plurality lock: the leader's lead over the runner-up
+// must exceed every vote that could still go to the runner-up. For two
+// candidates the two are the same inequality (lead > T/2 <=> lead - second >
+// T - lead - second), which the tests check over thousands of random cases.
+//   certain   - counted lead     > expected ballots - ballots counted
+//   projected - projected lead   > expected ballots - ballots we projected
+// (the second term is the silent counties, which nobody's projection covers).
+function callOf(demReal, repReal, demPredicted, repPredicted, ballotEstimate, indReal = 0, indPredicted = 0) {
+  if (!(indReal > 0) && !(indPredicted > 0)) {
+    const half = ballotEstimate / 2;
+    if (Math.max(demReal, repReal) > half) return "certain";
+    if (Math.max(demPredicted, repPredicted) > half) return "projected";
+    return "unprojected";
+  }
+  const stillToCount = Math.max(ballotEstimate - (demReal + repReal + indReal), 0);
+  if (leadOver(demReal, repReal, indReal) > stillToCount) return "certain";
+  const notProjected = Math.max(ballotEstimate - (demPredicted + repPredicted + indPredicted), 0);
+  if (leadOver(demPredicted, repPredicted, indPredicted) > notProjected) return "projected";
+  return "unprojected";
 }
 
 // historicalEntry is whatever historical_<race>.json has for this area's
@@ -175,19 +250,32 @@ function flatPredict(demReal, repReal, percentIn) {
  */
 function estimateArea(area, historicalEntry, reportingVoteFraction) {
   const { demReal, repReal, percentIn, totalVotes } = area;
+  // Only a contender: the caller zeroes a third candidate who is below the
+  // threshold. The extra keys below appear ONLY in a race that has one, so every
+  // result for a two-candidate race is the object it always was. The race is
+  // what matters, not this area's own votes: a county where the third candidate
+  // happens to have none is still projected by the same flat model as its
+  // neighbours, never by the two-party swing model beside them.
+  const contender = area.independentRace === true || area.indReal > 0;
+  const indReal = area.indReal > 0 ? area.indReal : 0;
 
   if (!(percentIn > 0) || !totalVotes) {
     return { demPredicted: null, repPredicted: null, noData: true, usedFallback: false };
   }
 
   if (percentIn >= 100) {
-    return { demPredicted: demReal, repPredicted: repReal, noData: false, usedFallback: false };
+    return { demPredicted: demReal, repPredicted: repReal, noData: false, usedFallback: false,
+             ...(contender ? { indPredicted: indReal } : {}) };
   }
 
-  const historical = historicalShare(historicalEntry);
+  // A third candidate means last cycle's Democrat-versus-Republican baseline
+  // does not describe this race: project all three blocs flat.
+  const historical = contender ? null : historicalShare(historicalEntry);
   if (!historical) {
     const { demPredicted, repPredicted } = flatPredict(demReal, repReal, percentIn);
-    return { demPredicted, repPredicted, noData: false, usedFallback: true, scale: 100 / percentIn };
+    const scale = 100 / percentIn;
+    return { demPredicted, repPredicted, noData: false, usedFallback: true, scale,
+             ...(contender ? { indPredicted: indReal * scale, fallbackReason: "independent" } : {}) };
   }
 
   const counted = demReal + repReal;
@@ -231,7 +319,10 @@ function turnoutBasis(areas, stateEntries) {
   let projected = 0, historical = 0;
   for (const area of areas) {
     const votes = votesByFips.get(area.fips);
-    const total = area.demPredicted + area.repPredicted;
+    // The third candidate's votes are ballots too: last cycle's total was every
+    // ballot in the race, so leaving them out would make a race with a strong
+    // independent look like a collapse in turnout.
+    const total = area.demPredicted + area.repPredicted + (area.indPredicted || 0);
     if (!votes || !Number.isFinite(total)) continue;
     projected += total;
     historical += votes;
@@ -271,6 +362,11 @@ function stateBallotEstimate(projected, baselineTotal, basis) {
 }
 
 const api = {
+  INDEPENDENT_MIN_SHARE,
+  INDEPENDENT_MIN_VOTES,
+  independentIsMaterial,
+  leaderOf,
+  callOf,
   TURNOUT_SCALE_MIN,
   TURNOUT_SCALE_MAX,
   turnoutBasis,

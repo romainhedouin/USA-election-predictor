@@ -659,7 +659,7 @@
 <!--CONFIG-->
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
-<script src="estimate.js"></script>
+<script src="estimate.js?v=2"></script>
 <script>
 const TOPOLOGY_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/counties-albers-10m.json";
 // us-atlas ships counties and states only - no congressional-district layer
@@ -813,10 +813,10 @@ const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`
 // Tri-state on purpose: an exact tie is not a Republican lead, and calling it
 // one used to raise a bogus mismatch outline whenever the extrapolation then
 // favoured the Democrat.
-function leaderOf(dem, rep) {
-  if (dem > rep) return "D";
-  if (rep > dem) return "R";
-  return "tie";
+// The rules themselves live in estimate.js, where they are tested in Node against
+// the two-way versions this file used to hold. `ind` is the third candidate.
+function leaderOf(dem, rep, ind) {
+  return estimate.leaderOf(dem, rep, ind);
 }
 
 // Three-way call, not a boolean "certain" - replaces a flat "95% reporting"
@@ -829,11 +829,8 @@ function leaderOf(dem, rep) {
 //                  one candidate over that same halfway mark.
 //   "unprojected": nobody's projected total even reaches a majority yet -
 //                  too little to call, however it might be leaning.
-function callOf(demReal, repReal, demPredicted, repPredicted, ballotEstimate) {
-  const half = ballotEstimate / 2;
-  if (Math.max(demReal, repReal) > half) return "certain";
-  if (Math.max(demPredicted, repPredicted) > half) return "projected";
-  return "unprojected";
+function callOf(demReal, repReal, demPredicted, repPredicted, ballotEstimate, indReal, indPredicted) {
+  return estimate.callOf(demReal, repReal, demPredicted, repPredicted, ballotEstimate, indReal, indPredicted);
 }
 
 // Each CSV has a sibling .meta.json saying where the numbers came from and
@@ -1021,7 +1018,8 @@ function explainTotals(agg, areas, ctx) {
 
 // The same way the tests call clampToViewport directly.
 // buildRaceData and friends are exported so a test can feed them synthetic rows.
-Object.assign(window.__mapTest, { explainArea, explainTotals, buildRaceData, stateStatusFor, parseRaceCsv });
+Object.assign(window.__mapTest, { explainArea, explainTotals, buildRaceData, stateStatusFor, parseRaceCsv,
+                                  leaderOf, callOf, summarizeStatus });
 
 // Two things map.html can't get from any single area, both answered by the
 // same question - "which of this state's counties does the caller not have
@@ -1143,6 +1141,20 @@ function chooseBaseline(area, race, historical, historicalKeyOf, countyBaselineO
   return none(area.fips ? "noCountyEntry" : "notCounty");
 }
 
+// Whether a race's third candidate is a real contender, and who they are: null
+// when they hold under 5% of the votes counted so far (or fewer than 1,000), in
+// which case everything is computed as if they were not on the ballot. The
+// share is of the race's whole count - statewide, or the district's own - not of
+// any one county, so a county where they happen to poll 3% is still drawn
+// beside the one where they lead.
+function independentOf(areas) {
+  const votes = areas.reduce((n, a) => n + a.indRaw, 0);
+  const total = areas.reduce((n, a) => n + a.totalVotes, 0);
+  if (!estimate.independentIsMaterial(votes, total)) return null;
+  const named = areas.find(a => a.indName);
+  return { name: named ? named.indName : "Independent", party: named ? named.indParty : "", share: votes / total };
+}
+
 // How this cycle's turnout compares with the baseline, for one state's
 // reporting areas (estimate.turnoutBasis), or null when it cannot be told.
 // County-reported races compare against their own county baseline; the
@@ -1216,6 +1228,14 @@ function buildRaceData(rows, race, historical, countyReference, meta) {
       // One side with no candidate (e.g. an independent instead of a
       // Democrat): any baseline would invent votes for a missing candidate.
       contested: Boolean(row["Democrat Name"] && row["Republican Name"]),
+      // The race's third candidate, if this CSV has the columns (an older one,
+      // such as the President file on a long-lived volume, does not). `indRaw`
+      // is what the row says; `indReal` is what counts, which is decided once
+      // the whole race is known - see independentOf.
+      indRaw: +row["Independent Real"] || 0,
+      indName: row["Independent Name"] || "",
+      indParty: row["Independent Party"] || "",
+      indReal: 0,
     };
     // Keyed by county FIPS, which is exactly the id us-atlas gives its county
     // shapes. Matching on names instead used to paint 10 states wrong - a New
@@ -1236,6 +1256,14 @@ function buildRaceData(rows, race, historical, countyReference, meta) {
   // stateHistoricalCoverage below. Then aggregate the now-estimated areas up
   // to the state.
   for (const [stateKey, areas] of areasByState) {
+    // One decision for the whole race, applied to every area in it, so the
+    // counties of one state are all projected by the same model.
+    const independent = independentOf(areas);
+    for (const area of areas) {
+      area.indReal = independent ? area.indRaw : 0;
+      area.independentRace = Boolean(independent);
+    }
+
     const { reportingVoteFraction, silentDemPredicted, silentRepPredicted, silentCount = 0, ballotEstimateOverride } =
       stateHistoricalCoverage(areas, historical, race, historicalKeyOf);
     const countyBaselineOf = countyBaselineFactory(areas, historical, historicalKeyOf, countyReference);
@@ -1252,13 +1280,15 @@ function buildRaceData(rows, race, historical, countyReference, meta) {
     // Mismatch/certainty is still computed per STATE, aggregating every
     // populated county row in that state - see stateStatusFor.
     const agg = { totalExpected: 0, totalVotes: 0, demReal: 0, repReal: 0, demPredicted: 0, repPredicted: 0,
-                  geography: "counties" };
+                  indReal: 0, indPredicted: 0, independent, geography: "counties" };
     for (const area of areas) {
       agg.totalVotes += area.totalVotes;
       agg.demReal += area.demReal;
       agg.repReal += area.repReal;
       agg.demPredicted += area.demPredicted;
       agg.repPredicted += area.repPredicted;
+      agg.indReal += area.indReal;
+      agg.indPredicted += area.indPredicted || 0;   // only present when the race has a contender
     }
     // demPredicted/repPredicted deliberately do NOT include silent counties'
     // historical D/R split - that would be assuming how a county votes
@@ -1278,7 +1308,8 @@ function buildRaceData(rows, race, historical, countyReference, meta) {
     // estimate.turnoutBasis), so the part of the state still to come is scaled
     // by that - as far as the evidence can be trusted. This moves only the
     // expected total ballots (and so "% in" and the call), never a projection.
-    const projectedBallots = agg.demPredicted + agg.repPredicted;
+    // The third candidate's projected votes are ballots like any other.
+    const projectedBallots = agg.demPredicted + agg.repPredicted + agg.indPredicted;
     const silentBallots = silentDemPredicted + silentRepPredicted;
     const turnout = turnoutFor(race, areas, historical, countyReference);
     if (ballotEstimateOverride != null) {
@@ -1331,8 +1362,8 @@ function summarizeStatus(status, ballots) {
 function stateStatusFor(current, stateKey) {
   const agg = current.stateAggregates.get(stateKey);
   if (!agg) return null;
-  const rawLeader = leaderOf(agg.demReal, agg.repReal);
-  const predictedLeader = leaderOf(agg.demPredicted, agg.repPredicted);
+  const rawLeader = leaderOf(agg.demReal, agg.repReal, agg.indReal);
+  const predictedLeader = leaderOf(agg.demPredicted, agg.repPredicted, agg.indPredicted);
   // Whichever of NBC's own total (agg.totalExpected) or our own historical-
   // informed one (agg.ballotEstimate) is bigger - never the smaller of the
   // two, which would just be whichever source happens to be undercounting.
@@ -1355,7 +1386,9 @@ function stateStatusFor(current, stateKey) {
     // A tie is not a flip: with nothing resolved on one side there is nothing
     // for the extrapolation to disagree with.
     mismatch: rawLeader !== "tie" && predictedLeader !== "tie" && rawLeader !== predictedLeader,
-    call: callOf(agg.demReal, agg.repReal, agg.demPredicted, agg.repPredicted, agg.ballotEstimate),
+    call: callOf(agg.demReal, agg.repReal, agg.demPredicted, agg.repPredicted, agg.ballotEstimate,
+                 agg.indReal, agg.indPredicted),
+    independent: agg.independent || null,
     percentIn: Number.isFinite(percentIn) ? percentIn : 0,
   };
 }
