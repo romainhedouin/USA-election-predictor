@@ -41,6 +41,12 @@
     --dem-projected: #a8c8e8;
     --rep-certain:   #b02127;
     --rep-projected: #efb0ac;
+    /* The third bloc: an independent, or whoever else polls best besides the
+       Democrat and Republican. Purple, because it is neither of the two party
+       colours and sits between them without being either. Measured, not
+       judged: scripts/check_palette.py and tests/test_palette.py. */
+    --ind-certain:   #8250c4;
+    --ind-projected: #b78bcd;
     --no-data:       #e4e7ea;
     /* One level fainter than "projected": nobody's own projected total has
        even reached a majority of the state's estimated ballots yet (see
@@ -49,6 +55,7 @@
        using, so it stays correct if either of those is ever retuned. */
     --dem-faint: color-mix(in srgb, var(--dem-projected) 35%, var(--no-data));
     --rep-faint: color-mix(in srgb, var(--rep-projected) 35%, var(--no-data));
+    --ind-faint: color-mix(in srgb, var(--ind-projected) 35%, var(--no-data));
     --no-race:       #f2f4f6;
     --no-race-line:  #d4dade;
     --mismatch:      #f0b400;
@@ -87,6 +94,14 @@
     --dem-projected: #74a9f0;
     --rep-certain:   #ce3e39;
     --rep-projected: #ffb37e;
+    /* No purple can be told from blue on hue alone by someone with red-green
+       colour blindness (the best that is still recognisably purple is ~15
+       CIEDE2000 from the nearest blue, against the 20 the pairs above keep). So
+       here an independent is ALSO marked by texture, never by colour alone:
+       vertical stripes where it is projected or leading (the other two use
+       diagonals) and a fine dot pattern where it is certain. */
+    --ind-certain:   #7d4ec6;
+    --ind-projected: #e3d2f0;
     --no-data:       #e6ebed;
     --mismatch:      #0b0e14;
     --mismatch-casing: #ffffff;
@@ -103,6 +118,8 @@
       --dem-projected: #26466f;
       --rep-certain:   #f04a45;
       --rep-projected: #822b2f;
+      --ind-certain:   #c28fe8;
+      --ind-projected: #7446a8;
       --no-data:       #2b323d;
       --no-race:       #1e242d;
       --no-race-line:  #2f3743;
@@ -138,6 +155,8 @@
     --dem-projected: #0d42a6;
     --rep-certain:   #f46157;
     --rep-projected: #430f03;
+    --ind-certain:   #a97ebf;
+    --ind-projected: #403248;
     --no-data:       #1c1c30;
     --mismatch:      #f2f5f9;
     --mismatch-casing: #0f1319;
@@ -796,6 +815,9 @@ function snapshotColors() {
     repCertain:   cssVar(style, "--rep-certain"),
     repProjected: cssVar(style, "--rep-projected"),
     repFaint:     cssVar(style, "--rep-faint"),
+    indCertain:   cssVar(style, "--ind-certain"),
+    indProjected: cssVar(style, "--ind-projected"),
+    indFaint:     cssVar(style, "--ind-faint"),
     noData:       cssVar(style, "--no-data"),
     noRace:       cssVar(style, "--no-race"),
     noRaceLine:   cssVar(style, "--no-race-line"),
@@ -1577,6 +1599,22 @@ function start(topology, defaultRaceData) {
     // accessibility goal that hatch pattern already serves.
     hatch("hatch-dem-faint", COLORS.noData, COLORS.demProjected, 45, 0.16);
     hatch("hatch-rep-faint", COLORS.noData, COLORS.repProjected, -45, 0.16);
+    // The third bloc gets the one orientation the other two do not use: plain
+    // vertical stripes (the base stripe is vertical at rotate(0)), and a dot
+    // pattern for "certain", which for the others is a flat fill. Only drawn in
+    // colour-blind mode (see leaderFill), where hue cannot be relied on.
+    hatch("hatch-ind", COLORS.indProjected, COLORS.indCertain, 0);
+    // Its pale "projected" tint barely differs from the grey it is drawn on, so
+    // the faint stripe is the solid purple, thinner, to keep it visible.
+    hatch("hatch-ind-faint", COLORS.noData, COLORS.indCertain, 0, 0.12);
+    const dots = defs.append("pattern")
+      .attr("id", `dots-ind-${ns}`)
+      .attr("patternUnits", "userSpaceOnUse")
+      .attr("width", tile).attr("height", tile);
+    dots.append("rect").attr("width", tile).attr("height", tile).attr("fill", COLORS.indCertain);
+    dots.append("circle")
+      .attr("cx", tile / 2).attr("cy", tile / 2).attr("r", tile * 0.2)
+      .attr("fill", COLORS.indProjected);
   }
 
   // Default preserveAspectRatio (meet): the tighter axis sets the scale.
@@ -1601,6 +1639,11 @@ function start(topology, defaultRaceData) {
       if (call === "projected") return cvdMode() ? `url(#hatch-rep-${ns})` : COLORS.repProjected;
       return cvdMode() ? `url(#hatch-rep-faint-${ns})` : COLORS.repFaint;
     }
+    if (leader === "I") {
+      if (call === "certain") return cvdMode() ? `url(#dots-ind-${ns})` : COLORS.indCertain;
+      if (call === "projected") return cvdMode() ? `url(#hatch-ind-${ns})` : COLORS.indProjected;
+      return cvdMode() ? `url(#hatch-ind-faint-${ns})` : COLORS.indFaint;
+    }
     return COLORS.noData; // tie, or nothing resolved yet
   }
 
@@ -1615,9 +1658,11 @@ function start(topology, defaultRaceData) {
   // always sum to for an area with any data at all.
   function countyFill(data, ns) {
     if (!data || data.noData) return COLORS.noData;
-    const ballotEstimate = data.demPredicted + data.repPredicted;
-    const call = callOf(data.demReal, data.repReal, data.demPredicted, data.repPredicted, ballotEstimate);
-    return leaderFill(leaderOf(data.demPredicted, data.repPredicted), call, ns);
+    // indReal/indPredicted exist only in a race that has a contender.
+    const ballotEstimate = data.demPredicted + data.repPredicted + (data.indPredicted || 0);
+    const call = callOf(data.demReal, data.repReal, data.demPredicted, data.repPredicted, ballotEstimate,
+                        data.indReal, data.indPredicted);
+    return leaderFill(leaderOf(data.demPredicted, data.repPredicted, data.indPredicted), call, ns);
   }
 
   // ---------- tooltip ----------
